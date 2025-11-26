@@ -270,25 +270,25 @@ const Mega645AnalyzerV4 = () => {
 
   const handleExport = async () => {
     try {
-      const data = {
-        rawData,
-        currentDay,
-        lockedMatrix,
-        timestamp: new Date().getTime()
+      // COMPRESSION: Use short keys (r=rawData, d=currentDay, l=lockedMatrix numbers only, t=timestamp)
+      const minified = {
+        r: rawData,
+        d: currentDay,
+        l: lockedMatrix ? lockedMatrix.map(t => t.numbers) : null,
+        t: new Date().getTime()
       };
-      // Fix Unicode (Vietnamese) encoding for Base64
-      const jsonString = JSON.stringify(data);
+
+      const jsonString = JSON.stringify(minified);
       const code = btoa(unescape(encodeURIComponent(jsonString)));
 
       try {
         await navigator.clipboard.writeText(code);
-        alert("✅ Đã COPY Mã Dữ Liệu vào bộ nhớ tạm!\n\nGửi mã này qua Zalo/Messenger cho chính bạn để đồng bộ sang thiết bị khác.");
+        alert(`✅ Đã COPY Mã Dữ Liệu (Đã nén)!\n\nĐộ dài mã: ${code.length} ký tự.\nGửi mã này qua Zalo/Messenger để đồng bộ.`);
       } catch (clipboardError) {
-        // Fallback if clipboard API fails (e.g. non-secure context)
         prompt("Copy thủ công mã dưới đây:", code);
       }
     } catch (e) {
-      alert("❌ Lỗi khi tạo mã dữ liệu: " + (e as Error).message);
+      alert("❌ Lỗi khi tạo mã: " + (e as Error).message);
     }
   };
 
@@ -296,22 +296,44 @@ const Mega645AnalyzerV4 = () => {
     const code = prompt("Dán Mã Dữ Liệu (từ thiết bị khác) vào đây:");
     if (!code) return;
     try {
-      // Fix Unicode decoding
       const decoded = decodeURIComponent(escape(atob(code)));
       const data = JSON.parse(decoded);
 
-      if (data.rawData && data.currentDay !== undefined) {
-        if (window.confirm(`Tìm thấy bản sao lưu lúc ${new Date(data.timestamp).toLocaleString('vi-VN')}.\nBạn có muốn ghi đè dữ liệu hiện tại không?`)) {
-          setRawData(data.rawData);
-          setCurrentDay(data.currentDay);
-          setLockedMatrix(data.lockedMatrix);
-          alert("✅ Đồng bộ thành công!");
+      // Support both Old (Long) and New (Minified) formats
+      const rawDataVal = data.r || data.rawData;
+      const currentDayVal = data.d !== undefined ? data.d : data.currentDay;
+      const timestampVal = data.t || data.timestamp;
+      const lockedRaw = data.l || data.lockedMatrix;
+
+      if (rawDataVal && currentDayVal !== undefined) {
+        if (window.confirm(`Tìm thấy bản sao lưu lúc ${new Date(timestampVal).toLocaleString('vi-VN')}.\nBạn có muốn ghi đè dữ liệu hiện tại không?`)) {
+          setRawData(rawDataVal);
+          setCurrentDay(currentDayVal);
+
+          // Reconstruct Locked Matrix Stats
+          if (lockedRaw) {
+            // Check if it's the new format (array of numbers) or old (array of objects)
+            const isMinified = Array.isArray(lockedRaw[0]) && typeof lockedRaw[0][0] === 'number';
+
+            if (isMinified) {
+              // Re-run engine to get full stats
+              const reconstructed = lockedRaw.map((nums: number[]) => calculateTicketHealth(nums));
+              setLockedMatrix(reconstructed);
+            } else {
+              // Old format, use as is
+              setLockedMatrix(lockedRaw);
+            }
+          } else {
+            setLockedMatrix(null);
+          }
+
+          alert("✅ Đồng bộ & Giải nén thành công!");
         }
       } else {
-        alert("❌ Mã dữ liệu không hợp lệ hoặc bị lỗi.");
+        alert("❌ Mã dữ liệu không hợp lệ.");
       }
     } catch (e) {
-      alert("❌ Lỗi: Mã không đúng định dạng hoặc bị lỗi font chữ.");
+      alert("❌ Lỗi: Mã không đúng định dạng.");
     }
   };
 
