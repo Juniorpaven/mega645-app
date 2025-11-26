@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
 import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
@@ -180,20 +180,28 @@ const Mega645AnalyzerV4 = () => {
     for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
 
     lines.forEach(line => {
+      // Robust Parsing Strategy:
+      // 1. Identify Date (if any) for display
+      // 2. Extract all numbers 1-45
+      // 3. Take the LAST 6 valid numbers as the draw result
+
       const parts = line.trim().split(/[\t,;|\s]+/);
       let dateStr = "N/A";
-      let nums: number[] = [];
 
-      if (parts[0].includes('/') || parts[0].includes('-')) {
-        // Normalize date to use hyphens
-        dateStr = parts[0].replace(/\//g, '-');
-        nums = parts.slice(1).map(n => parseInt(n)).filter(n => !isNaN(n));
-      } else {
-        nums = parts.map(n => parseInt(n)).filter(n => !isNaN(n));
+      // Try to find a date-like string at the start
+      if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
+        dateStr = parts[0].replace(/[/. ]/g, '-');
       }
 
-      if (nums.length >= 6) {
-        const finalNums = nums.slice(0, 6);
+      // Extract all numbers from the line
+      const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
+
+      // Filter only valid lottery numbers (1-45)
+      const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
+
+      // We assume the last 6 valid numbers are the balls
+      if (validRangeNumbers.length >= 6) {
+        const finalNums = validRangeNumbers.slice(-6);
         validDraws.push({ date: dateStr, numbers: finalNums });
         finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
       }
@@ -392,9 +400,24 @@ const Mega645AnalyzerV4 = () => {
 
             <div className="h-40 border-t border-slate-800 p-2">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData}>
-                  <Tooltip contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '10px' }} cursor={{ fill: '#334155', opacity: 0.2 }} />
-                  <Bar dataKey="freq" fill="#10b981" />
+                <BarChart data={chartData} margin={{ top: 20, right: 5, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tickFormatter={(val) => parseInt(val) < 10 ? `0${val}` : val}
+                    tick={{ fill: '#94a3b8', fontSize: 10 }}
+                    interval={0}
+                  />
+                  <YAxis hide />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '12px', color: '#fff' }}
+                    cursor={{ fill: '#334155', opacity: 0.2 }}
+                    formatter={(value: number) => [`${value} lần`, 'Xuất hiện']}
+                    labelFormatter={(label) => `Số ${parseInt(label) < 10 ? '0' + label : label}`}
+                  />
+                  <Bar dataKey="freq" fill="#10b981" radius={[4, 4, 0, 0]}>
+                    <LabelList dataKey="freq" position="top" fill="#fff" fontSize={10} formatter={(val: any) => Number(val) > 0 ? String(val) : ''} />
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -417,10 +440,16 @@ const Mega645AnalyzerV4 = () => {
 
             <div className="flex flex-wrap gap-3">
               {selectedPool.map((item, idx) => (
-                <div key={idx} className="flex flex-col items-center gap-1">
-                  <div className={`w-9 h-9 flex items-center justify-center rounded-lg font-bold border-b-2 shadow-sm ${item.type === 'HOT' ? 'bg-red-900/80 border-red-500 text-white' : item.type === 'COLD' ? 'bg-blue-900/80 border-blue-500 text-white' : 'bg-amber-900/80 border-amber-500 text-white'}`}>
+                <div key={idx} className={`flex flex-col items-center justify-center w-12 h-14 rounded-lg border-b-4 shadow-lg transition-transform hover:scale-110 ${item.type === 'HOT' ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-900' :
+                  item.type === 'COLD' ? 'bg-gradient-to-br from-blue-500 to-blue-700 border-blue-900' :
+                    'bg-gradient-to-br from-amber-500 to-amber-700 border-amber-900'
+                  }`}>
+                  <span className="text-lg font-bold text-white leading-none">
                     {item.num < 10 ? `0${item.num}` : item.num}
-                  </div>
+                  </span>
+                  <span className="text-[10px] font-medium text-white/80 mt-1">
+                    {item.count}L
+                  </span>
                 </div>
               ))}
             </div>
