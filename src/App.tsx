@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
 import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers } from 'lucide-react';
 
@@ -11,17 +11,37 @@ const WHEEL_TEMPLATE = [
   [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
 ];
 
-// Sample Data
-const INITIAL_EXCEL_DATA = `22/11/2023	03	14	22	26	31	43
-20/11/2023	05	12	19	28	35	44
-18/11/2023	02	05	14	26	33	40
-15/11/2023	01	10	12	25	31	42
-13/11/2023	07	14	22	28	36	45
-11/11/2023	05	08	19	21	34	39
-08/11/2023	03	15	26	30	40	44
-06/11/2023	12	18	22	25	33	41
-04/11/2023	01	05	09	14	27	38
-01/11/2023	04	11	19	23	35	45`;
+// Sample Data (Expanded to 30 lines)
+const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
+20-11-2023	05	12	19	28	35	44
+18-11-2023	02	05	14	26	33	40
+15-11-2023	01	10	12	25	31	42
+13-11-2023	07	14	22	28	36	45
+11-11-2023	05	08	19	21	34	39
+08-11-2023	03	15	26	30	40	44
+06-11-2023	12	18	22	25	33	41
+04-11-2023	01	05	09	14	27	38
+01-11-2023	04	11	19	23	35	45
+30-10-2023	02	09	15	22	31	40
+28-10-2023	05	11	18	25	33	42
+25-10-2023	01	08	14	20	29	38
+23-10-2023	03	12	19	24	35	44
+21-10-2023	06	15	22	28	36	41
+18-10-2023	02	10	17	25	32	39
+16-10-2023	04	13	21	29	34	43
+14-10-2023	01	07	15	23	30	45
+11-10-2023	05	12	18	26	33	40
+09-10-2023	03	09	16	22	31	42
+07-10-2023	02	08	14	20	28	37
+04-10-2023	06	11	19	25	34	44
+02-10-2023	01	10	17	24	32	41
+30-09-2023	04	13	21	29	36	45
+27-09-2023	05	12	18	26	33	40
+25-09-2023	02	09	15	22	30	39
+23-09-2023	03	11	19	27	35	43
+20-09-2023	01	08	16	24	31	42
+18-09-2023	06	14	21	28	36	44
+16-09-2023	04	10	17	25	32	41`;
 
 // --- TYPES ---
 type TicketStats = {
@@ -40,15 +60,38 @@ type TicketStats = {
 
 const Mega645AnalyzerV4 = () => {
   // --- STATE ---
-  const [rawData, setRawData] = useState(INITIAL_EXCEL_DATA);
+  const [rawData, setRawData] = useState(() => localStorage.getItem('mega645_rawData') || INITIAL_EXCEL_DATA);
   const [processedData, setProcessedData] = useState<{ date: string, numbers: number[] }[]>([]);
   const [frequency, setFrequency] = useState<Record<number, number>>({});
   const [selectedPool, setSelectedPool] = useState<{ num: number, type: string, count: number }[]>([]);
 
   // Strategy State
-  const [currentDay, setCurrentDay] = useState(1);
+  const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
   const [generatedMatrix, setGeneratedMatrix] = useState<TicketStats[]>([]);
-  const [lockedMatrix, setLockedMatrix] = useState<TicketStats[] | null>(null);
+  const [lockedMatrix, setLockedMatrix] = useState<TicketStats[] | null>(() => {
+    const saved = localStorage.getItem('mega645_lockedMatrix');
+    return saved ? JSON.parse(saved) : null;
+  });
+
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumberRef = useRef<HTMLDivElement>(null);
+
+  // --- PERSISTENCE ---
+  useEffect(() => {
+    localStorage.setItem('mega645_rawData', rawData);
+  }, [rawData]);
+
+  useEffect(() => {
+    localStorage.setItem('mega645_currentDay', currentDay.toString());
+  }, [currentDay]);
+
+  useEffect(() => {
+    if (lockedMatrix) {
+      localStorage.setItem('mega645_lockedMatrix', JSON.stringify(lockedMatrix));
+    } else {
+      localStorage.removeItem('mega645_lockedMatrix');
+    }
+  }, [lockedMatrix]);
 
   // --- ENGINE: TICKET HEALTH SCORING ---
   const calculateTicketHealth = (numbers: number[]): TicketStats => {
@@ -142,7 +185,8 @@ const Mega645AnalyzerV4 = () => {
       let nums: number[] = [];
 
       if (parts[0].includes('/') || parts[0].includes('-')) {
-        dateStr = parts[0];
+        // Normalize date to use hyphens
+        dateStr = parts[0].replace(/\//g, '-');
         nums = parts.slice(1).map(n => parseInt(n)).filter(n => !isNaN(n));
       } else {
         nums = parts.map(n => parseInt(n)).filter(n => !isNaN(n));
@@ -282,6 +326,12 @@ const Mega645AnalyzerV4 = () => {
       .sort((a, b) => parseInt(a.name) - parseInt(b.name));
   }, [frequency]);
 
+  // Generate line numbers
+  const lineNumbers = useMemo(() => {
+    const count = rawData.split('\n').length;
+    return Array.from({ length: Math.max(count, 30) }, (_, i) => i + 1).join('\n');
+  }, [rawData]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 xl:p-6">
       {/* HEADER */}
@@ -317,12 +367,29 @@ const Mega645AnalyzerV4 = () => {
               </span>
               <span className="text-[10px] text-slate-500">Hỗ trợ Excel copy-paste</span>
             </div>
-            <textarea
-              className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none"
-              value={rawData}
-              onChange={(e) => setRawData(e.target.value)}
-              placeholder={`DD/MM/YYYY  01  02  03  04  05  06\n...`}
-            />
+
+            <div className="flex flex-1 overflow-hidden relative">
+              {/* Line Numbers */}
+              <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
+                <pre className="leading-relaxed">{lineNumbers}</pre>
+              </div>
+
+              {/* Text Area */}
+              <textarea
+                ref={textareaRef}
+                className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                value={rawData}
+                onChange={(e) => setRawData(e.target.value)}
+                onScroll={() => {
+                  if (textareaRef.current && lineNumberRef.current) {
+                    lineNumberRef.current.scrollTop = textareaRef.current.scrollTop;
+                  }
+                }}
+                placeholder={`DD-MM-YYYY  01  02  03  04  05  06\n...`}
+                spellCheck={false}
+              />
+            </div>
+
             <div className="h-40 border-t border-slate-800 p-2">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={chartData}>
