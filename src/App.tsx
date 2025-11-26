@@ -77,6 +77,7 @@ const Mega645AnalyzerV4 = () => {
   const lineNumberRef = useRef<HTMLDivElement>(null);
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+  const [lastSaved, setLastSaved] = useState<string>("");
 
   // --- PERSISTENCE ---
   useEffect(() => {
@@ -90,6 +91,7 @@ const Mega645AnalyzerV4 = () => {
         localStorage.removeItem('mega645_lockedMatrix');
       }
       setSaveStatus('saved');
+      setLastSaved(new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit' }));
     }, 500);
     return () => clearTimeout(timer);
   }, [rawData, currentDay, lockedMatrix]);
@@ -286,7 +288,7 @@ const Mega645AnalyzerV4 = () => {
     );
   };
 
-  const TicketRowV4 = ({ stats, index, isLocked }: { stats: TicketStats, index: number, isLocked: boolean }) => {
+  const TicketRowV4 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
     const isBad = stats.status === 'BAD';
     const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
@@ -315,8 +317,15 @@ const Mega645AnalyzerV4 = () => {
           <div className="flex gap-2">
             {stats.numbers.map((n, i) => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
+              const isMatch = !isLocked && lockedSet?.has(n);
+
               return (
-                <span key={i} className={`relative font-mono font-bold w-7 h-7 flex items-center justify-center rounded ${n === 0 ? 'text-slate-700' : isLocked ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50' : 'bg-slate-800 text-slate-200 border border-slate-700'}`}>
+                <span key={i} className={`relative font-mono font-bold w-7 h-7 flex items-center justify-center rounded 
+                  ${n === 0 ? 'text-slate-700' :
+                    isLocked ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50' :
+                      isMatch ? 'bg-yellow-900/20 text-yellow-400 border border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.1)]' :
+                        'bg-slate-800 text-slate-200 border border-slate-700'
+                  }`}>
                   {n < 10 ? `0${n}` : n}
                   {isDouble && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>}
                 </span>
@@ -354,6 +363,14 @@ const Mega645AnalyzerV4 = () => {
     return Array.from({ length: Math.max(count, 30) }, (_, i) => i + 1).join('\n');
   }, [rawData]);
 
+  // Flatten locked matrix for comparison
+  const lockedNumbersSet = useMemo(() => {
+    if (!lockedMatrix) return new Set<number>();
+    const set = new Set<number>();
+    lockedMatrix.forEach(ticket => ticket.numbers.forEach(n => set.add(n)));
+    return set;
+  }, [lockedMatrix]);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 xl:p-6">
       {/* HEADER */}
@@ -367,7 +384,7 @@ const Mega645AnalyzerV4 = () => {
             <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
             {saveStatus === 'saved' ? (
               <span className="text-[10px] text-emerald-500 flex items-center gap-1 bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900/50">
-                <Check className="w-3 h-3" /> Đã lưu an toàn
+                <Check className="w-3 h-3" /> Đã lưu: {lastSaved}
               </span>
             ) : (
               <span className="text-[10px] text-yellow-500 flex items-center gap-1 bg-yellow-900/20 px-2 py-0.5 rounded border border-yellow-900/50">
@@ -507,11 +524,14 @@ const Mega645AnalyzerV4 = () => {
             {/* LOCKED MATRIX */}
             <div className={`rounded-xl border p-1 ${lockedMatrix ? 'bg-slate-900 border-emerald-500/50' : 'bg-slate-900/30 border-slate-800 dashed'}`}>
               <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 rounded-t-xl">
-                <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                  <Check className={`w-4 h-4 ${lockedMatrix ? 'text-emerald-400' : 'text-slate-600'}`} />
-                  Bộ Số Đang Nuôi
-                </h3>
-                {lockedMatrix && <span className="text-[10px] bg-emerald-900 text-emerald-400 px-2 py-0.5 rounded">LOCKED</span>}
+                <div>
+                  <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                    <Check className={`w-4 h-4 ${lockedMatrix ? 'text-emerald-400' : 'text-slate-600'}`} />
+                    Luồng Tĩnh (LOCKED)
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mt-0.5 ml-6">Cố định - Không đổi khi nhập mới</p>
+                </div>
+                {lockedMatrix && <span className="text-[10px] bg-emerald-900 text-emerald-400 px-2 py-0.5 rounded">ĐANG NUÔI</span>}
               </div>
 
               <div className="p-3 space-y-3 max-h-[600px] overflow-y-auto">
@@ -530,16 +550,19 @@ const Mega645AnalyzerV4 = () => {
             {/* LIVE SUGGESTION */}
             <div className="rounded-xl border border-slate-800 bg-slate-900">
               <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 rounded-t-xl">
-                <h3 className="font-bold text-slate-300 text-sm flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-yellow-500" />
-                  Gợi ý Thời Gian Thực
-                </h3>
-                <span className="text-[10px] text-slate-500">Live Preview</span>
+                <div>
+                  <h3 className="font-bold text-slate-300 text-sm flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-yellow-500" />
+                    Luồng Động (LIVE)
+                  </h3>
+                  <p className="text-[10px] text-slate-500 mt-0.5 ml-6">Tự động tính lại theo dữ liệu mới</p>
+                </div>
+                <span className="text-[10px] text-yellow-500/80 bg-yellow-900/10 px-2 py-0.5 rounded border border-yellow-900/30">Auto-Update</span>
               </div>
 
               <div className="p-3 space-y-3 max-h-[600px] overflow-y-auto">
                 {generatedMatrix.map((stats, idx) => (
-                  <TicketRowV4 key={idx} stats={stats} index={idx} isLocked={false} />
+                  <TicketRowV4 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
                 ))}
               </div>
             </div>
