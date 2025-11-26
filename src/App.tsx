@@ -76,22 +76,33 @@ const Mega645AnalyzerV4 = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumberRef = useRef<HTMLDivElement>(null);
 
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
+
   // --- PERSISTENCE ---
   useEffect(() => {
-    localStorage.setItem('mega645_rawData', rawData);
-  }, [rawData]);
+    setSaveStatus('saving');
+    const timer = setTimeout(() => {
+      localStorage.setItem('mega645_rawData', rawData);
+      localStorage.setItem('mega645_currentDay', currentDay.toString());
+      if (lockedMatrix) {
+        localStorage.setItem('mega645_lockedMatrix', JSON.stringify(lockedMatrix));
+      } else {
+        localStorage.removeItem('mega645_lockedMatrix');
+      }
+      setSaveStatus('saved');
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [rawData, currentDay, lockedMatrix]);
 
-  useEffect(() => {
-    localStorage.setItem('mega645_currentDay', currentDay.toString());
-  }, [currentDay]);
-
-  useEffect(() => {
-    if (lockedMatrix) {
-      localStorage.setItem('mega645_lockedMatrix', JSON.stringify(lockedMatrix));
-    } else {
-      localStorage.removeItem('mega645_lockedMatrix');
+  const handleHardReset = () => {
+    if (window.confirm('Bạn có chắc muốn xóa toàn bộ dữ liệu và reset về mặc định?')) {
+      localStorage.clear();
+      setRawData(INITIAL_EXCEL_DATA);
+      setLockedMatrix(null);
+      setCurrentDay(1);
+      window.location.reload();
     }
-  }, [lockedMatrix]);
+  };
 
   // --- ENGINE: TICKET HEALTH SCORING ---
   const calculateTicketHealth = (numbers: number[]): TicketStats => {
@@ -216,7 +227,10 @@ const Mega645AnalyzerV4 = () => {
     const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
     if (freqArray.length === 0) return;
 
-    freqArray.sort((a, b) => b.count - a.count);
+    freqArray.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.num - b.num; // Deterministic tie-breaker
+    });
 
     const hot = freqArray.slice(0, 3).map(i => i.num);
     const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
@@ -347,11 +361,25 @@ const Mega645AnalyzerV4 = () => {
         <div>
           <h1 className="text-2xl font-bold text-emerald-500 flex items-center gap-2">
             <HeartPulse className="w-8 h-8 text-red-500" />
-            Mega 6/45 Pro V4: Health Check
+            Mega 6/45 Pro V6: Final Persistence
           </h1>
-          <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
+          <div className="flex items-center gap-3">
+            <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
+            {saveStatus === 'saved' ? (
+              <span className="text-[10px] text-emerald-500 flex items-center gap-1 bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900/50">
+                <Check className="w-3 h-3" /> Đã lưu an toàn
+              </span>
+            ) : (
+              <span className="text-[10px] text-yellow-500 flex items-center gap-1 bg-yellow-900/20 px-2 py-0.5 rounded border border-yellow-900/50">
+                <RotateCcw className="w-3 h-3 animate-spin" /> Đang lưu...
+              </span>
+            )}
+          </div>
         </div>
         <div className="mt-4 md:mt-0 flex gap-3">
+          <button onClick={handleHardReset} className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded border border-red-900/50 text-xs transition-colors">
+            Reset All
+          </button>
           <div className="px-3 py-1 bg-slate-900 rounded border border-slate-800 text-xs flex items-center gap-2">
             <Layers className="w-4 h-4 text-emerald-400" />
             <span>Pool: {processedData.length} Kỳ</span>
