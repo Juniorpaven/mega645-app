@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
-import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers } from 'lucide-react';
+import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -268,6 +268,40 @@ const Mega645AnalyzerV4 = () => {
   const handleReset = () => { setLockedMatrix(null); setCurrentDay(1); };
   const handleNextDay = () => { if (currentDay < 7) setCurrentDay(currentDay + 1); };
 
+  const handleExport = () => {
+    const data = {
+      rawData,
+      currentDay,
+      lockedMatrix,
+      timestamp: new Date().getTime()
+    };
+    const code = btoa(JSON.stringify(data));
+    navigator.clipboard.writeText(code);
+    alert("✅ Đã COPY Mã Dữ Liệu!\n\nGửi mã này qua Zalo/Messenger cho chính bạn để đồng bộ sang thiết bị khác.");
+  };
+
+  const handleImport = () => {
+    const code = prompt("Dán Mã Dữ Liệu (từ thiết bị khác) vào đây:");
+    if (!code) return;
+    try {
+      const decoded = atob(code);
+      const data = JSON.parse(decoded);
+
+      if (data.rawData && data.currentDay !== undefined) {
+        if (window.confirm(`Tìm thấy bản sao lưu lúc ${new Date(data.timestamp).toLocaleString('vi-VN')}.\nBạn có muốn ghi đè dữ liệu hiện tại không?`)) {
+          setRawData(data.rawData);
+          setCurrentDay(data.currentDay);
+          setLockedMatrix(data.lockedMatrix);
+          alert("✅ Đồng bộ thành công!");
+        }
+      } else {
+        alert("❌ Mã dữ liệu không hợp lệ hoặc bị lỗi.");
+      }
+    } catch (e) {
+      alert("❌ Lỗi: Mã không đúng định dạng Base64.");
+    }
+  };
+
   // --- COMPONENTS ---
   const HealthBadge = ({ score, status }: { score: number, status: string }) => {
     let color = 'bg-slate-500';
@@ -378,7 +412,7 @@ const Mega645AnalyzerV4 = () => {
         <div>
           <h1 className="text-2xl font-bold text-emerald-500 flex items-center gap-2">
             <HeartPulse className="w-8 h-8 text-red-500" />
-            Mega 6/45 Pro V6: Final Persistence
+            Mega 6/45 Pro V7: Cross-Device Sync
           </h1>
           <div className="flex items-center gap-3">
             <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
@@ -393,7 +427,14 @@ const Mega645AnalyzerV4 = () => {
             )}
           </div>
         </div>
-        <div className="mt-4 md:mt-0 flex gap-3">
+        <div className="mt-4 md:mt-0 flex flex-wrap gap-2 justify-end">
+          <button onClick={handleExport} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded border border-indigo-500 text-xs flex items-center gap-1 transition-colors">
+            <Download className="w-3 h-3" /> Xuất Mã
+          </button>
+          <button onClick={handleImport} className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded border border-slate-600 text-xs flex items-center gap-1 transition-colors">
+            <Upload className="w-3 h-3" /> Nạp Mã
+          </button>
+          <div className="w-px h-6 bg-slate-800 mx-1"></div>
           <button onClick={handleHardReset} className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded border border-red-900/50 text-xs transition-colors">
             Reset All
           </button>
