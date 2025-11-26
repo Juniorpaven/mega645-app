@@ -268,23 +268,36 @@ const Mega645AnalyzerV4 = () => {
   const handleReset = () => { setLockedMatrix(null); setCurrentDay(1); };
   const handleNextDay = () => { if (currentDay < 7) setCurrentDay(currentDay + 1); };
 
-  const handleExport = () => {
-    const data = {
-      rawData,
-      currentDay,
-      lockedMatrix,
-      timestamp: new Date().getTime()
-    };
-    const code = btoa(JSON.stringify(data));
-    navigator.clipboard.writeText(code);
-    alert("✅ Đã COPY Mã Dữ Liệu!\n\nGửi mã này qua Zalo/Messenger cho chính bạn để đồng bộ sang thiết bị khác.");
+  const handleExport = async () => {
+    try {
+      const data = {
+        rawData,
+        currentDay,
+        lockedMatrix,
+        timestamp: new Date().getTime()
+      };
+      // Fix Unicode (Vietnamese) encoding for Base64
+      const jsonString = JSON.stringify(data);
+      const code = btoa(unescape(encodeURIComponent(jsonString)));
+
+      try {
+        await navigator.clipboard.writeText(code);
+        alert("✅ Đã COPY Mã Dữ Liệu vào bộ nhớ tạm!\n\nGửi mã này qua Zalo/Messenger cho chính bạn để đồng bộ sang thiết bị khác.");
+      } catch (clipboardError) {
+        // Fallback if clipboard API fails (e.g. non-secure context)
+        prompt("Copy thủ công mã dưới đây:", code);
+      }
+    } catch (e) {
+      alert("❌ Lỗi khi tạo mã dữ liệu: " + (e as Error).message);
+    }
   };
 
   const handleImport = () => {
     const code = prompt("Dán Mã Dữ Liệu (từ thiết bị khác) vào đây:");
     if (!code) return;
     try {
-      const decoded = atob(code);
+      // Fix Unicode decoding
+      const decoded = decodeURIComponent(escape(atob(code)));
       const data = JSON.parse(decoded);
 
       if (data.rawData && data.currentDay !== undefined) {
@@ -298,7 +311,7 @@ const Mega645AnalyzerV4 = () => {
         alert("❌ Mã dữ liệu không hợp lệ hoặc bị lỗi.");
       }
     } catch (e) {
-      alert("❌ Lỗi: Mã không đúng định dạng Base64.");
+      alert("❌ Lỗi: Mã không đúng định dạng hoặc bị lỗi font chữ.");
     }
   };
 
