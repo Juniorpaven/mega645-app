@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
-import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
+import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -350,33 +350,33 @@ const Mega645AnalyzerV10 = () => {
 
     return (
       <div className="flex items-center gap-2" title={`Điểm sức khỏe: ${score}/100`}>
-        <div className="w-16 h-2 bg-slate-700 rounded-full overflow-hidden">
+        <div className="w-20 h-2.5 bg-slate-700 rounded-full overflow-hidden">
           <div className={`h-full ${color}`} style={{ width: `${score}%` }}></div>
         </div>
-        <span className={`text-[10px] font-bold px-1 rounded ${color.replace('bg-', 'text-')} bg-opacity-20 border border-opacity-50 border-${color.replace('bg-', '')}`}>
+        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${color.replace('bg-', 'text-')} bg-opacity-20 border border-opacity-50 border-${color.replace('bg-', '')}`}>
           {score}
         </span>
       </div>
     );
   };
 
-  const TicketRowV10 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
+  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, poolMap }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, poolMap?: Record<number, string> }) => {
     const isBad = stats.status === 'BAD';
     const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
     return (
-      <div className={`flex flex-col gap-2 p-3 rounded-lg border bg-slate-900 ${opacityClass} ${isBad ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800'}`}>
+      <div className={`flex flex-col gap-3 p-4 rounded-xl border bg-slate-900/80 shadow-sm ${opacityClass} ${isBad ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800'}`}>
 
         {/* Row Header: Score & Status */}
-        <div className="flex justify-between items-center border-b border-slate-800/50 pb-2 mb-1">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-mono">#{index + 1}</span>
+        <div className="flex justify-between items-center border-b border-slate-800/50 pb-3 mb-1">
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-slate-500 font-mono font-bold">#{index + 1}</span>
             <HealthBadge score={stats.score} status={stats.status} />
           </div>
           {stats.issues.length > 0 && (
-            <div className="flex gap-1">
+            <div className="flex gap-1.5 flex-wrap justify-end">
               {stats.issues.map((issue, i) => (
-                <span key={i} className="text-[9px] bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-800/50">
+                <span key={i} className="text-[10px] uppercase font-bold bg-red-950 text-red-400 px-2 py-1 rounded border border-red-900/50">
                   {issue}
                 </span>
               ))}
@@ -385,38 +385,49 @@ const Mega645AnalyzerV10 = () => {
         </div>
 
         {/* Numbers & Stats */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+        <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
           <div className="flex gap-2">
             {stats.numbers.map((n, i) => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
               const isMatch = !isLocked && lockedSet?.has(n);
 
+              // Determine color based on Pool Status for Live Matrix
+              let colorClass = 'bg-slate-800 text-slate-200 border border-slate-700';
+              if (isLocked) {
+                colorClass = 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50';
+              } else if (poolMap) {
+                const status = poolMap[n];
+                if (status === 'HOT') colorClass = 'bg-red-600 text-white border border-red-500 shadow-lg shadow-red-900/20';
+                else if (status === 'COLD') colorClass = 'bg-blue-600 text-white border border-blue-500 shadow-lg shadow-blue-900/20';
+                else if (status === 'WARM') colorClass = 'bg-amber-600 text-white border border-amber-500 shadow-lg shadow-amber-900/20';
+              }
+
+              // Match highlight overrides standard pool color if needed, or adds glow
+              if (isMatch && !isLocked) {
+                colorClass += ' shadow-[0_0_15px_rgba(234,179,8,0.6)] ring-2 ring-yellow-400 z-10 scale-110 transition-transform';
+              }
+
               return (
-                <span key={i} className={`relative font-mono font-bold w-7 h-7 flex items-center justify-center rounded 
-                  ${n === 0 ? 'text-slate-700' :
-                    isLocked ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50' :
-                      isMatch ? 'bg-yellow-900/20 text-yellow-400 border border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.1)]' :
-                        'bg-slate-800 text-slate-200 border border-slate-700'
-                  }`}>
+                <span key={i} className={`relative font-mono font-bold w-10 h-10 flex items-center justify-center rounded-lg text-lg ${colorClass}`}>
                   {n < 10 ? `0${n}` : n}
-                  {isDouble && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>}
+                  {isDouble && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
                 </span>
               );
             })}
           </div>
 
           {/* Mini Indicators (Always Visible) */}
-          <div className="flex gap-2 text-[10px] font-mono opacity-80">
-            <span className={`px-1.5 py-0.5 rounded border ${stats.sum >= 118 && stats.sum <= 158 ? 'border-slate-700 text-slate-400' : 'border-red-800 text-red-400 bg-red-900/10'}`}>
+          <div className="flex gap-2 text-xs font-mono font-medium">
+            <span className={`px-2 py-1 rounded border ${stats.sum >= 118 && stats.sum <= 158 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-red-800 text-red-400 bg-red-900/20'}`}>
               ∑{stats.sum}
             </span>
-            <span className={`px-1.5 py-0.5 rounded border ${stats.evens >= 2 && stats.evens <= 4 ? 'border-slate-700 text-slate-400' : 'border-yellow-800 text-yellow-400 bg-yellow-900/10'}`}>
+            <span className={`px-2 py-1 rounded border ${stats.evens >= 2 && stats.evens <= 4 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-yellow-800 text-yellow-400 bg-yellow-900/20'}`}>
               {stats.evens}C/{stats.odds}L
             </span>
-            <span className={`px-1.5 py-0.5 rounded border ${stats.highs >= 2 && stats.highs <= 4 ? 'border-slate-700 text-slate-400' : 'border-blue-800 text-blue-400 bg-blue-900/10'}`}>
+            <span className={`px-2 py-1 rounded border ${stats.highs >= 2 && stats.highs <= 4 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-blue-800 text-blue-400 bg-blue-900/20'}`}>
               {stats.highs}T/{stats.lows}X
             </span>
-            {stats.consecutive && <span className="px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-800">LiênKề</span>}
+            {stats.consecutive && <span className="px-2 py-1 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-800">LiênKề</span>}
           </div>
         </div>
       </div>
@@ -440,6 +451,12 @@ const Mega645AnalyzerV10 = () => {
     lockedMatrix.forEach(ticket => ticket.numbers.forEach(n => set.add(n)));
     return set;
   }, [lockedMatrix]);
+
+  const poolMap = useMemo(() => {
+    const map: Record<number, string> = {};
+    selectedPool.forEach(p => map[p.num] = p.type);
+    return map;
+  }, [selectedPool]);
 
   return (
     <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden">
@@ -539,11 +556,11 @@ const Mega645AnalyzerV10 = () => {
 
                 {/* Read Only Content */}
                 <div className="flex-1 flex overflow-hidden opacity-50 grayscale-[0.5] pointer-events-none">
-                  <div className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none w-10">
+                  <div className="bg-slate-950 text-slate-600 text-lg font-mono p-3 text-right border-r border-slate-800 select-none w-16">
                     <pre className="leading-relaxed">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
                   </div>
                   <textarea
-                    className="flex-1 bg-black text-[10px] font-mono p-3 text-slate-400 resize-none leading-relaxed"
+                    className="flex-1 bg-black text-lg font-mono p-3 text-slate-400 resize-none leading-relaxed"
                     value={rawData}
                     readOnly
                   />
@@ -551,12 +568,12 @@ const Mega645AnalyzerV10 = () => {
               </div>
             ) : (
               <div className="flex-1 flex overflow-hidden">
-                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
+                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-lg font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-16">
                   <pre className="leading-relaxed">{lineNumbers}</pre>
                 </div>
                 <textarea
                   ref={textareaRef}
-                  className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                  className="flex-1 bg-black text-lg font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
                   value={rawData}
                   onChange={(e) => setRawData(e.target.value)}
                   onScroll={() => {
@@ -589,46 +606,57 @@ const Mega645AnalyzerV10 = () => {
         <section className="flex-1 flex flex-col bg-slate-950 relative h-[60%] md:h-full">
 
           {/* Top Control Bar */}
-          <div className="flex-none p-3 border-b border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-slate-900/20 gap-3">
-            {/* Pool Display */}
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide w-full sm:w-auto">
-              {selectedPool.map((item, idx) => (
-                <div key={idx} className={`
-                    flex flex-col items-center justify-center w-8 h-10 rounded shadow-lg flex-shrink-0
-                    ${item.type === 'HOT' ? 'bg-red-600' :
-                    item.type === 'COLD' ? 'bg-blue-600' :
-                      'bg-amber-600'
-                  }
-                  `}>
-                  <span className="text-xs font-bold text-white">{item.num < 10 ? `0${item.num}` : item.num}</span>
-                  <span className="text-[6px] text-white/80">{item.count}L</span>
+          <div className="flex-none p-4 border-b border-slate-800 flex flex-col gap-4 bg-slate-900/20">
+
+            {/* POOL HEADER & DISPLAY */}
+            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
+              <div className="flex justify-between items-center mb-3">
+                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">POOL 10 SỐ TỐI ƯU</h2>
+                <div className="flex gap-3 text-[10px] font-bold">
+                  <span className="flex items-center gap-1 text-red-500"><Flame className="w-3 h-3" /> HOT</span>
+                  <span className="flex items-center gap-1 text-amber-500"><Zap className="w-3 h-3" /> WARM</span>
+                  <span className="flex items-center gap-1 text-blue-500"><Snowflake className="w-3 h-3" /> COLD</span>
                 </div>
-              ))}
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+                {selectedPool.map((item, idx) => (
+                  <div key={idx} className={`
+                      flex flex-col items-center justify-center w-16 h-20 rounded-lg shadow-lg flex-shrink-0 border-b-4 transition-transform hover:scale-105
+                      ${item.type === 'HOT' ? 'bg-red-600 border-red-800' :
+                      item.type === 'COLD' ? 'bg-blue-600 border-blue-800' :
+                        'bg-amber-600 border-amber-800'
+                    }
+                    `}>
+                    <span className="text-3xl font-bold text-white drop-shadow-md">{item.num < 10 ? `0${item.num}` : item.num}</span>
+                    <span className="text-[10px] font-bold text-white/90 bg-black/20 px-1.5 rounded mt-1">{item.count}L</span>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* Main Action Buttons */}
-            <div className="flex gap-2 w-full sm:w-auto">
+            <div className="w-full">
               {!lockedMatrix ? (
                 <button
                   onClick={handleLock}
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-all"
+                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold shadow-lg transition-all text-sm uppercase tracking-wide"
                 >
-                  <Lock className="w-4 h-4" /> KHÓA & NUÔI
+                  <Lock className="w-4 h-4" /> KHÓA DỮ LIỆU & TẠO CHIẾN DỊCH
                 </button>
               ) : (
-                <div className="flex flex-1 sm:flex-none gap-2">
+                <div className="flex gap-2">
                   <button
                     onClick={handleNextDay}
-                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-all"
+                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold shadow-lg transition-all text-sm uppercase tracking-wide"
                   >
-                    <Calendar className="w-4 h-4" /> KỲ {currentDay} {'->'} {currentDay + 1}
+                    <Calendar className="w-4 h-4" /> HOÀN THÀNH KỲ {currentDay} {'->'} {currentDay + 1}
                   </button>
                   <button
                     onClick={handleUnlock}
-                    className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded text-xs font-bold border border-slate-700 transition-all"
+                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-bold border border-slate-700 transition-all"
                     title="Mở khóa để sửa"
                   >
-                    <Unlock className="w-4 h-4" />
+                    <RotateCcw className="w-5 h-5" />
                   </button>
                 </div>
               )}
@@ -640,21 +668,21 @@ const Mega645AnalyzerV10 = () => {
 
             {/* LEFT: LOCKED MATRIX */}
             <div className="flex flex-col overflow-hidden bg-slate-900/10">
-              <div className="p-2 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
-                <h3 className="text-xs font-bold text-emerald-500 flex items-center gap-2">
-                  <Check className="w-3 h-3" /> LOCKED (TĨNH)
+              <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
+                <h3 className="text-xs font-bold text-emerald-500 flex items-center gap-2 uppercase">
+                  <Check className="w-3 h-3" /> Luồng Tĩnh (LOCKED)
                 </h3>
-                {lockedMatrix && <span className="text-[9px] bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">ĐANG NUÔI</span>}
+                {lockedMatrix && <span className="text-[9px] bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800 font-bold">ĐANG NUÔI</span>}
               </div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-slate-700">
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {lockedMatrix ? (
                   lockedMatrix.map((stats, idx) => (
                     <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} />
                   ))
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
-                    <Lock className="w-8 h-8 opacity-20" />
-                    <span className="text-xs">Chưa khóa dữ liệu</span>
+                    <Lock className="w-10 h-10 opacity-20" />
+                    <span className="text-sm font-medium">Chưa khóa dữ liệu</span>
                   </div>
                 )}
               </div>
@@ -662,15 +690,15 @@ const Mega645AnalyzerV10 = () => {
 
             {/* RIGHT: LIVE MATRIX */}
             <div className="flex flex-col overflow-hidden bg-slate-900/10">
-              <div className="p-2 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
-                <h3 className="text-xs font-bold text-yellow-500 flex items-center gap-2">
-                  <Activity className="w-3 h-3" /> LIVE (ĐỘNG)
+              <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
+                <h3 className="text-xs font-bold text-amber-500 flex items-center gap-2 uppercase">
+                  <Activity className="w-3 h-3" /> Luồng Động (LIVE)
                 </h3>
-                <span className="text-[9px] bg-yellow-900/50 text-yellow-300 px-2 py-0.5 rounded border border-yellow-800">AUTO</span>
+                <span className="text-[9px] bg-amber-900/50 text-amber-300 px-2 py-0.5 rounded border border-amber-800 font-bold">AUTO-UPDATE</span>
               </div>
-              <div className="flex-1 overflow-y-auto p-2 space-y-2 scrollbar-thin scrollbar-thumb-slate-700">
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {generatedMatrix.map((stats, idx) => (
-                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
+                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} poolMap={poolMap} />
                 ))}
               </div>
             </div>
