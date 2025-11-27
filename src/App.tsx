@@ -457,7 +457,7 @@ const Mega645AnalyzerV10 = () => {
 
         {/* Numbers & Stats */}
         <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-center">
             {stats.numbers.map((n, i) => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
               const isMatch = !isLocked && lockedSet?.has(n);
@@ -488,7 +488,7 @@ const Mega645AnalyzerV10 = () => {
           </div>
 
           {/* Mini Indicators (Always Visible) */}
-          <div className="flex gap-2 text-xs font-mono font-medium">
+          <div className="flex gap-2 text-xs font-mono font-medium flex-wrap justify-center">
             <span className={`px-2 py-1 rounded border ${stats.sum >= 118 && stats.sum <= 158 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-red-800 text-red-400 bg-red-900/20'}`}>
               ∑{stats.sum}
             </span>
