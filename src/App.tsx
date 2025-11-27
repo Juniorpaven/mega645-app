@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, Cell } from 'recharts';
+import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, Cell, LabelList } from 'recharts';
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
@@ -563,11 +563,11 @@ const Mega645AnalyzerV10 = () => {
 
                 {/* Read Only Content */}
                 <div className="flex-1 flex overflow-hidden opacity-50 grayscale-[0.5] pointer-events-none">
-                  <div className="bg-slate-950 text-slate-600 text-xs font-mono p-3 text-right border-r border-slate-800 select-none w-10">
-                    <pre className="leading-relaxed">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
+                  <div className="bg-slate-950 text-slate-600 text-sm font-mono p-3 text-right border-r border-slate-800 select-none w-10">
+                    <pre className="leading-loose">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
                   </div>
                   <textarea
-                    className="flex-1 bg-black text-xs font-mono p-3 text-slate-400 resize-none leading-relaxed"
+                    className="flex-1 bg-black text-sm font-mono p-3 text-slate-400 resize-none leading-loose"
                     value={rawData}
                     readOnly
                   />
@@ -575,12 +575,12 @@ const Mega645AnalyzerV10 = () => {
               </div>
             ) : (
               <div className="flex-1 flex overflow-hidden">
-                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-xs font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
-                  <pre className="leading-relaxed">{lineNumbers}</pre>
+                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-sm font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
+                  <pre className="leading-loose">{lineNumbers}</pre>
                 </div>
                 <textarea
                   ref={textareaRef}
-                  className="flex-1 bg-black text-xs font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                  className="flex-1 bg-black text-sm font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-loose"
                   value={rawData}
                   onChange={(e) => setRawData(e.target.value)}
                   onScroll={() => {
@@ -606,6 +606,7 @@ const Mega645AnalyzerV10 = () => {
                   height={15}
                 />
                 <Bar dataKey="freq" radius={[2, 2, 0, 0]}>
+                  <LabelList dataKey="freq" position="top" fill="#cbd5e1" fontSize={10} fontWeight="bold" />
                   {chartData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.fill} />
                   ))}
