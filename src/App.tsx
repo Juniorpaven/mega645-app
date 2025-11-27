@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
-import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload } from 'lucide-react';
+import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload, Trash2, PlusCircle } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -78,6 +78,7 @@ const Mega645AnalyzerV4 = () => {
 
   const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
   const [lastSaved, setLastSaved] = useState<string>("");
+  const [newDayInput, setNewDayInput] = useState('');
 
   // --- PERSISTENCE ---
   useEffect(() => {
@@ -338,6 +339,37 @@ const Mega645AnalyzerV4 = () => {
     }
   };
 
+  const handleClearData = () => {
+    if (window.confirm("Bạn có chắc muốn xóa toàn bộ dữ liệu đầu vào?")) {
+      setRawData("");
+    }
+  };
+
+  const handleUpdateNewDay = () => {
+    if (!newDayInput.trim()) return;
+
+    // Basic validation
+    const nums = newDayInput.match(/\d+/g);
+    if (!nums || nums.length < 6) {
+      alert("Vui lòng nhập đúng định dạng (ít nhất 6 số)!");
+      return;
+    }
+
+    const currentLines = rawData.trim().split('\n');
+    // Sliding Window: Add new top, keep only 30 lines total
+    const newLines = [newDayInput.trim(), ...currentLines].slice(0, 30);
+
+    setRawData(newLines.join('\n'));
+    setNewDayInput('');
+
+    // Auto-advance day
+    if (currentDay < 7) {
+      setCurrentDay(currentDay + 1);
+    } else {
+      alert("Đã hoàn thành chu kỳ 7 ngày! Hãy cân nhắc Reset chiến dịch.");
+    }
+  };
+
   // --- COMPONENTS ---
   const HealthBadge = ({ score, status }: { score: number, status: string }) => {
     let color = 'bg-slate-500';
@@ -493,32 +525,87 @@ const Mega645AnalyzerV4 = () => {
           <div className="bg-slate-900 rounded-xl border border-slate-800 flex flex-col h-[500px]">
             <div className="p-3 border-b border-slate-800 bg-slate-800/50 flex justify-between items-center">
               <span className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4" /> Dữ liệu Đầu vào
+                <FileSpreadsheet className="w-4 h-4" />
+                {lockedMatrix ? "Dữ Liệu Đã Khóa (30 Kỳ)" : "Dữ liệu Đầu vào"}
               </span>
-              <span className="text-[10px] text-slate-500">Hỗ trợ Excel copy-paste</span>
-            </div>
-
-            <div className="flex flex-1 overflow-hidden relative">
-              {/* Line Numbers */}
-              <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
-                <pre className="leading-relaxed">{lineNumbers}</pre>
+              <div className="flex items-center gap-2">
+                {!lockedMatrix && (
+                  <button
+                    onClick={handleClearData}
+                    className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded hover:bg-slate-700"
+                    title="Xóa toàn bộ dữ liệu"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+                <span className="text-[10px] text-slate-500">
+                  {lockedMatrix ? "Chế độ Nuôi: Chỉ thêm ngày mới" : "Hỗ trợ Excel copy-paste"}
+                </span>
               </div>
-
-              {/* Text Area */}
-              <textarea
-                ref={textareaRef}
-                className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
-                value={rawData}
-                onChange={(e) => setRawData(e.target.value)}
-                onScroll={() => {
-                  if (textareaRef.current && lineNumberRef.current) {
-                    lineNumberRef.current.scrollTop = textareaRef.current.scrollTop;
-                  }
-                }}
-                placeholder={`DD-MM-YYYY  01  02  03  04  05  06\n...`}
-                spellCheck={false}
-              />
             </div>
+
+            {lockedMatrix ? (
+              // LOCKED MODE: New Day Input + Read Only List
+              <div className="flex flex-col h-full overflow-hidden">
+                {/* New Day Input Section */}
+                <div className="p-3 bg-emerald-900/10 border-b border-emerald-900/30 space-y-2">
+                  <label className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
+                    <PlusCircle className="w-3 h-3" /> Cập nhật ngày mới (Tự động cắt đuôi)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newDayInput}
+                      onChange={(e) => setNewDayInput(e.target.value)}
+                      placeholder="VD: 29-11-2023 01 02 03 04 05 06"
+                      className="flex-1 bg-slate-950 border border-emerald-500/30 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      onKeyDown={(e) => e.key === 'Enter' && handleUpdateNewDay()}
+                    />
+                    <button
+                      onClick={handleUpdateNewDay}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-xs font-bold transition-colors whitespace-nowrap"
+                    >
+                      Thêm & Xong Kỳ {currentDay}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Read Only Data View */}
+                <div className="flex flex-1 overflow-hidden relative opacity-75 grayscale-[0.3]">
+                  <div className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
+                    <pre className="leading-relaxed">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
+                  </div>
+                  <textarea
+                    className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-400 whitespace-pre resize-none leading-relaxed cursor-not-allowed"
+                    value={rawData}
+                    readOnly
+                  />
+                </div>
+              </div>
+            ) : (
+              // EDIT MODE: Standard Textarea
+              <div className="flex flex-1 overflow-hidden relative">
+                {/* Line Numbers */}
+                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
+                  <pre className="leading-relaxed">{lineNumbers}</pre>
+                </div>
+
+                {/* Text Area */}
+                <textarea
+                  ref={textareaRef}
+                  className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                  value={rawData}
+                  onChange={(e) => setRawData(e.target.value)}
+                  onScroll={() => {
+                    if (textareaRef.current && lineNumberRef.current) {
+                      lineNumberRef.current.scrollTop = textareaRef.current.scrollTop;
+                    }
+                  }}
+                  placeholder={`DD-MM-YYYY  01  02  03  04  05  06\n...`}
+                  spellCheck={false}
+                />
+              </div>
+            )}
 
             <div className="h-40 border-t border-slate-800 p-2">
               <ResponsiveContainer width="100%" height="100%">
