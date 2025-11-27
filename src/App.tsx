@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, LabelList } from 'recharts';
-import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload, Trash2, PlusCircle } from 'lucide-react';
+import { BarChart, Bar, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts';
+import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -11,7 +11,7 @@ const WHEEL_TEMPLATE = [
   [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
 ];
 
-// Sample Data (Expanded to 30 lines)
+// Sample Data
 const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
 20-11-2023	05	12	19	28	35	44
 18-11-2023	02	05	14	26	33	40
@@ -49,8 +49,8 @@ type TicketStats = {
   sum: number;
   evens: number;
   odds: number;
-  highs: number; // > 22
-  lows: number;  // <= 22
+  highs: number;
+  lows: number;
   consecutive: boolean;
   doublesCount: number;
   score: number;
@@ -58,7 +58,7 @@ type TicketStats = {
   issues: string[];
 };
 
-const Mega645AnalyzerV4 = () => {
+const Mega645AnalyzerV10 = () => {
   // --- STATE ---
   const [rawData, setRawData] = useState(() => localStorage.getItem('mega645_rawData') || INITIAL_EXCEL_DATA);
   const [processedData, setProcessedData] = useState<{ date: string, numbers: number[] }[]>([]);
@@ -107,9 +107,56 @@ const Mega645AnalyzerV4 = () => {
     }
   };
 
+  const handleClearData = () => {
+    if (window.confirm("Bạn có chắc muốn xóa toàn bộ dữ liệu đầu vào?")) {
+      setRawData("");
+    }
+  };
+
+  const handleCopyInput = () => {
+    navigator.clipboard.writeText(rawData);
+    alert("Đã sao chép dữ liệu vào bộ nhớ tạm!");
+  };
+
+  const handlePasteInput = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setRawData(text);
+    } catch (err) {
+      alert("Không thể dán tự động. Vui lòng dùng Ctrl+V.");
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (textareaRef.current) {
+      textareaRef.current.select();
+    }
+  };
+
+  const handleUpdateNewDay = () => {
+    if (!newDayInput.trim()) return;
+
+    const nums = newDayInput.match(/\d+/g);
+    if (!nums || nums.length < 6) {
+      alert("Vui lòng nhập đúng định dạng (ít nhất 6 số)!");
+      return;
+    }
+
+    const currentLines = rawData.trim().split('\n');
+    const newLines = [newDayInput.trim(), ...currentLines].slice(0, 30);
+
+    setRawData(newLines.join('\n'));
+    setNewDayInput('');
+
+    if (currentDay < 7) {
+      setCurrentDay(currentDay + 1);
+    } else {
+      alert("Đã hoàn thành chu kỳ 7 ngày! Hãy cân nhắc Reset chiến dịch.");
+    }
+  };
+
   // --- ENGINE: TICKET HEALTH SCORING ---
   const calculateTicketHealth = (numbers: number[]): TicketStats => {
-    // 1. Basic Stats
     const sum = numbers.reduce((a, b) => a + b, 0);
     const evens = numbers.filter(n => n % 2 === 0).length;
     const odds = 6 - evens;
@@ -117,7 +164,6 @@ const Mega645AnalyzerV4 = () => {
     const lows = 6 - highs;
     const doublesCount = numbers.filter(n => DOUBLE_NUMBERS.includes(n)).length;
 
-    // Check Consecutive
     const sorted = [...numbers].sort((a, b) => a - b);
     let consecutive = false;
     for (let i = 0; i < sorted.length - 1; i++) {
@@ -127,22 +173,18 @@ const Mega645AnalyzerV4 = () => {
       }
     }
 
-    // 2. Scoring Logic (Base 100)
     let score = 100;
     let issues: string[] = [];
 
-    // Filter A: Sum (Tổng) - Critical
     if (sum >= 118 && sum <= 158) {
-      // Perfect zone
     } else if ((sum >= 100 && sum < 118) || (sum > 158 && sum <= 200)) {
       score -= 15;
       issues.push(`Tổng lệch (${sum})`);
     } else {
-      score -= 40; // Critical penalty
+      score -= 40;
       issues.push(`Tổng cực đoan (${sum})`);
     }
 
-    // Filter B: Parity (Chẵn/Lẻ) - Critical
     if (evens === 0 || evens === 6) {
       score -= 40;
       issues.push(`Chẵn/Lẻ lệch (0-6)`);
@@ -151,7 +193,6 @@ const Mega645AnalyzerV4 = () => {
       issues.push(`Chẵn/Lẻ lệch (1-5)`);
     }
 
-    // Filter C: High/Low (Tài/Xỉu) - High Priority
     if (highs === 0 || highs === 6) {
       score -= 30;
       issues.push(`Tài/Xỉu lệch (0-6)`);
@@ -160,23 +201,19 @@ const Mega645AnalyzerV4 = () => {
       issues.push(`Tài/Xỉu lệch (1-5)`);
     }
 
-    // Filter D: Consecutive (Liền kề) - Bonus
     if (consecutive) {
-      score += 5; // Bonus for good pattern
+      score += 5;
     } else {
-      score -= 5; // Slight penalty for being too scattered
+      score -= 5;
     }
 
-    // Filter E: Doubles (Số Kép) - Overdose check
     if (doublesCount > 2) {
       score -= 20;
       issues.push(`Dư thừa số Kép (${doublesCount})`);
     }
 
-    // Cap Score
     score = Math.min(100, Math.max(0, score));
 
-    // Determine Status
     let status: TicketStats['status'] = 'GOOD';
     if (score >= 90) status = 'EXCELLENT';
     else if (score >= 70) status = 'GOOD';
@@ -188,33 +225,21 @@ const Mega645AnalyzerV4 = () => {
 
   // --- ENGINE: DATA PROCESSING ---
   useEffect(() => {
-    // V9: Auto-Trim - Only process top 30 lines to prevent dilution
     const lines = rawData.trim().split('\n').slice(0, 30);
     const validDraws: { date: string, numbers: number[] }[] = [];
     const freqMap: Record<number, number> = {};
     for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
 
     lines.forEach(line => {
-      // Robust Parsing Strategy:
-      // 1. Identify Date (if any) for display
-      // 2. Extract all numbers 1-45
-      // 3. Take the LAST 6 valid numbers as the draw result
-
       const parts = line.trim().split(/[\t,;|\s]+/);
       let dateStr = "N/A";
-
-      // Try to find a date-like string at the start
       if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
         dateStr = parts[0].replace(/[/. ]/g, '-');
       }
 
-      // Extract all numbers from the line
       const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
-
-      // Filter only valid lottery numbers (1-45)
       const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
 
-      // We assume the last 6 valid numbers are the balls
       if (validRangeNumbers.length >= 6) {
         const finalNums = validRangeNumbers.slice(-6);
         validDraws.push({ date: dateStr, numbers: finalNums });
@@ -226,14 +251,14 @@ const Mega645AnalyzerV4 = () => {
     setFrequency(freqMap);
   }, [rawData]);
 
-  // --- ENGINE: 3-4-3 SELECTION & MATRIX GENERATION ---
+  // --- ENGINE: SELECTION ---
   useEffect(() => {
     const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
     if (freqArray.length === 0) return;
 
     freqArray.sort((a, b) => {
       if (b.count !== a.count) return b.count - a.count;
-      return a.num - b.num; // Deterministic tie-breaker
+      return a.num - b.num;
     });
 
     const hot = freqArray.slice(0, 3).map(i => i.num);
@@ -259,7 +284,6 @@ const Mega645AnalyzerV4 = () => {
       row.map(idx => poolNums[idx] !== undefined ? poolNums[idx] : 0)
     );
 
-    // Calculate Health for each ticket in matrix
     const analyzedMatrix = rawMatrix.map(ticketNums => calculateTicketHealth(ticketNums));
     setGeneratedMatrix(analyzedMatrix);
 
@@ -267,106 +291,58 @@ const Mega645AnalyzerV4 = () => {
 
   // --- HANDLERS ---
   const handleLock = () => { setLockedMatrix(generatedMatrix); setCurrentDay(1); };
+  const handleUnlock = () => { setLockedMatrix(null); }; // Unlock to edit
   const handleReset = () => { setLockedMatrix(null); setCurrentDay(1); };
   const handleNextDay = () => { if (currentDay < 7) setCurrentDay(currentDay + 1); };
 
   const handleExport = async () => {
     try {
-      // COMPRESSION: Use short keys (r=rawData, d=currentDay, l=lockedMatrix numbers only, t=timestamp)
       const minified = {
         r: rawData,
         d: currentDay,
         l: lockedMatrix ? lockedMatrix.map(t => t.numbers) : null,
         t: new Date().getTime()
       };
-
       const jsonString = JSON.stringify(minified);
       const code = btoa(unescape(encodeURIComponent(jsonString)));
-
       try {
         await navigator.clipboard.writeText(code);
-        alert(`✅ Đã COPY Mã Dữ Liệu (Đã nén)!\n\nĐộ dài mã: ${code.length} ký tự.\nGửi mã này qua Zalo/Messenger để đồng bộ.`);
+        alert(`✅ Đã COPY Mã Dữ Liệu!`);
       } catch (clipboardError) {
-        prompt("Copy thủ công mã dưới đây:", code);
+        prompt("Copy mã:", code);
       }
     } catch (e) {
-      alert("❌ Lỗi khi tạo mã: " + (e as Error).message);
+      alert("Lỗi: " + (e as Error).message);
     }
   };
 
   const handleImport = () => {
-    const code = prompt("Dán Mã Dữ Liệu (từ thiết bị khác) vào đây:");
+    const code = prompt("Dán Mã Dữ Liệu:");
     if (!code) return;
     try {
       const decoded = decodeURIComponent(escape(atob(code)));
       const data = JSON.parse(decoded);
-
-      // Support both Old (Long) and New (Minified) formats
       const rawDataVal = data.r || data.rawData;
       const currentDayVal = data.d !== undefined ? data.d : data.currentDay;
-      const timestampVal = data.t || data.timestamp;
       const lockedRaw = data.l || data.lockedMatrix;
 
       if (rawDataVal && currentDayVal !== undefined) {
-        if (window.confirm(`Tìm thấy bản sao lưu lúc ${new Date(timestampVal).toLocaleString('vi-VN')}.\nBạn có muốn ghi đè dữ liệu hiện tại không?`)) {
-          setRawData(rawDataVal);
-          setCurrentDay(currentDayVal);
-
-          // Reconstruct Locked Matrix Stats
-          if (lockedRaw) {
-            // Check if it's the new format (array of numbers) or old (array of objects)
-            const isMinified = Array.isArray(lockedRaw[0]) && typeof lockedRaw[0][0] === 'number';
-
-            if (isMinified) {
-              // Re-run engine to get full stats
-              const reconstructed = lockedRaw.map((nums: number[]) => calculateTicketHealth(nums));
-              setLockedMatrix(reconstructed);
-            } else {
-              // Old format, use as is
-              setLockedMatrix(lockedRaw);
-            }
+        setRawData(rawDataVal);
+        setCurrentDay(currentDayVal);
+        if (lockedRaw) {
+          const isMinified = Array.isArray(lockedRaw[0]) && typeof lockedRaw[0][0] === 'number';
+          if (isMinified) {
+            setLockedMatrix(lockedRaw.map((nums: number[]) => calculateTicketHealth(nums)));
           } else {
-            setLockedMatrix(null);
+            setLockedMatrix(lockedRaw);
           }
-
-          alert("✅ Đồng bộ & Giải nén thành công!");
+        } else {
+          setLockedMatrix(null);
         }
-      } else {
-        alert("❌ Mã dữ liệu không hợp lệ.");
+        alert("✅ Đồng bộ thành công!");
       }
     } catch (e) {
-      alert("❌ Lỗi: Mã không đúng định dạng.");
-    }
-  };
-
-  const handleClearData = () => {
-    if (window.confirm("Bạn có chắc muốn xóa toàn bộ dữ liệu đầu vào?")) {
-      setRawData("");
-    }
-  };
-
-  const handleUpdateNewDay = () => {
-    if (!newDayInput.trim()) return;
-
-    // Basic validation
-    const nums = newDayInput.match(/\d+/g);
-    if (!nums || nums.length < 6) {
-      alert("Vui lòng nhập đúng định dạng (ít nhất 6 số)!");
-      return;
-    }
-
-    const currentLines = rawData.trim().split('\n');
-    // Sliding Window: Add new top, keep only 30 lines total
-    const newLines = [newDayInput.trim(), ...currentLines].slice(0, 30);
-
-    setRawData(newLines.join('\n'));
-    setNewDayInput('');
-
-    // Auto-advance day
-    if (currentDay < 7) {
-      setCurrentDay(currentDay + 1);
-    } else {
-      alert("Đã hoàn thành chu kỳ 7 ngày! Hãy cân nhắc Reset chiến dịch.");
+      alert("❌ Mã lỗi.");
     }
   };
 
@@ -375,79 +351,72 @@ const Mega645AnalyzerV4 = () => {
     let color = 'bg-slate-500';
     if (status === 'EXCELLENT') color = 'bg-emerald-500';
     if (status === 'GOOD') color = 'bg-blue-500';
-    if (status === 'WARNING') color = 'bg-yellow-500';
+    if (status === 'WARNING') color = 'bg-amber-500';
     if (status === 'BAD') color = 'bg-red-500';
 
     return (
-      <div className="flex items-center gap-2" title={`Điểm sức khỏe: ${score}/100`}>
-        <div className="w-16 h-2 bg-slate-700 rounded-full overflow-hidden">
+      <div className="flex items-center gap-2" title={`Score: ${score}`}>
+        <div className="w-12 h-1.5 bg-slate-800 rounded-full overflow-hidden">
           <div className={`h-full ${color}`} style={{ width: `${score}%` }}></div>
         </div>
-        <span className={`text-[10px] font-bold px-1 rounded ${color.replace('bg-', 'text-')} bg-opacity-20 border border-opacity-50 border-${color.replace('bg-', '')}`}>
+        <span className={`text-[10px] font-bold ${color.replace('bg-', 'text-')}`}>
           {score}
         </span>
       </div>
     );
   };
 
-  const TicketRowV4 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
+  const TicketRowV10 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
     const isBad = stats.status === 'BAD';
-    const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
     return (
-      <div className={`flex flex-col gap-2 p-3 rounded-lg border bg-slate-900 ${opacityClass} ${isBad ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800'}`}>
-
-        {/* Row Header: Score & Status */}
-        <div className="flex justify-between items-center border-b border-slate-800/50 pb-2 mb-1">
+      <div className={`group relative flex flex-col gap-1 p-3 rounded-lg border backdrop-blur-sm transition-all duration-300
+        ${isBad && !isLocked ? 'opacity-60 grayscale hover:opacity-100 hover:grayscale-0' : ''}
+        ${isLocked
+          ? 'bg-emerald-950/30 border-emerald-500/30 hover:bg-emerald-950/50'
+          : 'bg-slate-900/40 border-slate-800 hover:border-amber-500/50 hover:bg-slate-800/60'
+        }
+      `}>
+        <div className="flex justify-between items-center mb-1">
           <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 font-mono">#{index + 1}</span>
+            <span className={`text-xs font-mono font-bold ${isLocked ? 'text-emerald-500' : 'text-slate-500'}`}>#{index + 1}</span>
             <HealthBadge score={stats.score} status={stats.status} />
           </div>
           {stats.issues.length > 0 && (
-            <div className="flex gap-1">
-              {stats.issues.map((issue, i) => (
-                <span key={i} className="text-[9px] bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded border border-red-800/50">
-                  {issue}
-                </span>
-              ))}
-            </div>
+            <span className="text-[9px] text-red-400 bg-red-900/20 px-1.5 py-0.5 rounded border border-red-900/30 truncate max-w-[120px]">
+              {stats.issues[0]} {stats.issues.length > 1 && `+${stats.issues.length - 1}`}
+            </span>
           )}
         </div>
 
-        {/* Numbers & Stats */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-          <div className="flex gap-2">
+        <div className="flex justify-between items-center gap-2">
+          <div className="flex gap-1.5">
             {stats.numbers.map((n, i) => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
               const isMatch = !isLocked && lockedSet?.has(n);
-
               return (
-                <span key={i} className={`relative font-mono font-bold w-7 h-7 flex items-center justify-center rounded 
-                  ${n === 0 ? 'text-slate-700' :
-                    isLocked ? 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50' :
-                      isMatch ? 'bg-yellow-900/20 text-yellow-400 border border-yellow-500/50 shadow-[0_0_10px_rgba(234,179,8,0.1)]' :
-                        'bg-slate-800 text-slate-200 border border-slate-700'
-                  }`}>
+                <div key={i} className={`
+                  w-8 h-8 flex items-center justify-center rounded-md font-mono font-bold text-sm relative overflow-hidden
+                  ${isLocked
+                    ? 'bg-emerald-900/40 text-emerald-100 border border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]'
+                    : isMatch
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                      : 'bg-slate-800/80 text-slate-300 border border-slate-700'
+                  }
+                `}>
                   {n < 10 ? `0${n}` : n}
-                  {isDouble && <span className="absolute -top-1 -right-1 w-2 h-2 bg-purple-500 rounded-full animate-pulse"></span>}
-                </span>
+                  {isDouble && <div className="absolute top-0 right-0 w-1.5 h-1.5 bg-purple-500 rounded-bl-md"></div>}
+                </div>
               );
             })}
           </div>
+        </div>
 
-          {/* Mini Indicators */}
-          <div className="flex gap-2 text-[10px] font-mono opacity-80">
-            <span className={`px-1.5 py-0.5 rounded border ${stats.sum >= 118 && stats.sum <= 158 ? 'border-slate-700 text-slate-400' : 'border-red-800 text-red-400 bg-red-900/10'}`}>
-              ∑{stats.sum}
-            </span>
-            <span className={`px-1.5 py-0.5 rounded border ${stats.evens >= 2 && stats.evens <= 4 ? 'border-slate-700 text-slate-400' : 'border-yellow-800 text-yellow-400 bg-yellow-900/10'}`}>
-              {stats.evens}C/{stats.odds}L
-            </span>
-            <span className={`px-1.5 py-0.5 rounded border ${stats.highs >= 2 && stats.highs <= 4 ? 'border-slate-700 text-slate-400' : 'border-blue-800 text-blue-400 bg-blue-900/10'}`}>
-              {stats.highs}T/{stats.lows}X
-            </span>
-            {stats.consecutive && <span className="px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-800">LiênKề</span>}
-          </div>
+        {/* Micro Stats */}
+        <div className="flex gap-2 mt-1 text-[9px] font-mono text-slate-500 opacity-0 group-hover:opacity-100 transition-opacity">
+          <span>∑:{stats.sum}</span>
+          <span>{stats.evens}C/{stats.odds}L</span>
+          <span>{stats.highs}T/{stats.lows}X</span>
         </div>
       </div>
     );
@@ -459,13 +428,11 @@ const Mega645AnalyzerV4 = () => {
       .sort((a, b) => parseInt(a.name) - parseInt(b.name));
   }, [frequency]);
 
-  // Generate line numbers
   const lineNumbers = useMemo(() => {
     const count = rawData.split('\n').length;
     return Array.from({ length: Math.max(count, 30) }, (_, i) => i + 1).join('\n');
   }, [rawData]);
 
-  // Flatten locked matrix for comparison
   const lockedNumbersSet = useMemo(() => {
     if (!lockedMatrix) return new Set<number>();
     const set = new Set<number>();
@@ -474,83 +441,84 @@ const Mega645AnalyzerV4 = () => {
   }, [lockedMatrix]);
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans p-4 xl:p-6">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row justify-between items-center mb-6 border-b border-slate-800 pb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-emerald-500 flex items-center gap-2">
-            <HeartPulse className="w-8 h-8 text-red-500" />
-            Mega 6/45 Pro V9: Auto-Trim Logic
-          </h1>
-          <div className="flex items-center gap-3">
-            <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
-            {saveStatus === 'saved' ? (
-              <span className="text-[10px] text-emerald-500 flex items-center gap-1 bg-emerald-900/20 px-2 py-0.5 rounded border border-emerald-900/50">
-                <Check className="w-3 h-3" /> Đã lưu: {lastSaved}
-              </span>
-            ) : (
-              <span className="text-[10px] text-yellow-500 flex items-center gap-1 bg-yellow-900/20 px-2 py-0.5 rounded border border-yellow-900/50">
-                <RotateCcw className="w-3 h-3 animate-spin" /> Đang lưu...
-              </span>
+    <div className="h-screen flex flex-col bg-slate-950 text-slate-200 font-sans overflow-hidden selection:bg-emerald-500/30">
+
+      {/* --- HEADER --- */}
+      <header className="h-14 flex-none bg-slate-900/80 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-6 z-50">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-lg shadow-lg shadow-emerald-900/50">
+            <HeartPulse className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-400 to-amber-400">
+              Mega 6/45 Pro V10
+            </h1>
+            <p className="text-[10px] text-slate-500 font-mono tracking-wider">THE LUCKY PROFESSIONAL EDITION</p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-800/50 rounded-full border border-slate-700">
+            <Layers className="w-3 h-3 text-emerald-400" />
+            <span className="text-xs font-mono text-emerald-400">{processedData.length} Kỳ</span>
+            <span className="w-px h-3 bg-slate-700 mx-1"></span>
+            <Calendar className="w-3 h-3 text-amber-400" />
+            <span className="text-xs font-mono text-amber-400">Ngày {currentDay}/7</span>
+          </div>
+
+          <div className="flex gap-1">
+            <button onClick={handleExport} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors" title="Xuất dữ liệu">
+              <Download className="w-4 h-4" />
+            </button>
+            <button onClick={handleImport} className="p-2 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors" title="Nhập dữ liệu">
+              <Upload className="w-4 h-4" />
+            </button>
+            <button onClick={handleHardReset} className="p-2 hover:bg-red-900/20 rounded-lg text-red-400 hover:text-red-300 transition-colors" title="Reset All">
+              <RotateCcw className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* --- MAIN CONTENT --- */}
+      <main className="flex-1 flex overflow-hidden">
+
+        {/* --- LEFT PANEL: INPUT KHỔNG LỒ --- */}
+        <section className="w-[40%] flex flex-col border-r border-slate-800 bg-slate-900/20 backdrop-blur-sm relative">
+
+          {/* Toolbar */}
+          <div className="flex-none p-2 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
+            <div className="flex items-center gap-2">
+              <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
+              <span className="text-xs font-bold text-slate-300">INPUT DATA</span>
+            </div>
+            {!lockedMatrix && (
+              <div className="flex gap-1">
+                <button onClick={handleSelectAll} className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white" title="Chọn tất cả">
+                  <Maximize2 className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handleCopyInput} className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white" title="Sao chép">
+                  <Copy className="w-3.5 h-3.5" />
+                </button>
+                <button onClick={handlePasteInput} className="p-1.5 hover:bg-slate-700 rounded text-slate-400 hover:text-white" title="Dán">
+                  <ClipboardPaste className="w-3.5 h-3.5" />
+                </button>
+                <div className="w-px h-4 bg-slate-700 mx-1"></div>
+                <button onClick={handleClearData} className="p-1.5 hover:bg-red-900/30 rounded text-red-400 hover:text-red-300" title="Xóa hết">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             )}
           </div>
-        </div>
-        <div className="mt-4 md:mt-0 flex flex-wrap gap-2 justify-end">
-          <button onClick={handleExport} className="px-3 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded border border-indigo-500 text-xs flex items-center gap-1 transition-colors">
-            <Download className="w-3 h-3" /> Xuất Mã
-          </button>
-          <button onClick={handleImport} className="px-3 py-1 bg-slate-700 hover:bg-slate-600 text-white rounded border border-slate-600 text-xs flex items-center gap-1 transition-colors">
-            <Upload className="w-3 h-3" /> Nạp Mã
-          </button>
-          <div className="w-px h-6 bg-slate-800 mx-1"></div>
-          <button onClick={handleHardReset} className="px-3 py-1 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded border border-red-900/50 text-xs transition-colors">
-            Reset All
-          </button>
-          <div className="px-3 py-1 bg-slate-900 rounded border border-slate-800 text-xs flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-400" />
-            <span>Pool: {processedData.length} Kỳ</span>
-          </div>
-          <div className="px-3 py-1 bg-slate-900 rounded border border-slate-800 text-xs flex items-center gap-2">
-            <Calendar className="w-4 h-4 text-yellow-400" />
-            <span>Timeline: {currentDay}/7</span>
-          </div>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-
-        {/* LEFT PANEL: INPUT & CHART (4 Cols) */}
-        <div className="xl:col-span-4 space-y-4">
-          {/* INPUT AREA */}
-          <div className="bg-slate-900 rounded-xl border border-slate-800 flex flex-col h-[500px]">
-            <div className="p-3 border-b border-slate-800 bg-slate-800/50 flex justify-between items-center">
-              <span className="text-xs font-bold text-slate-300 flex items-center gap-2">
-                <FileSpreadsheet className="w-4 h-4" />
-                {lockedMatrix ? "Dữ Liệu Đã Khóa (30 Kỳ)" : "Dữ liệu Đầu vào"}
-              </span>
-              <div className="flex items-center gap-2">
-                {!lockedMatrix && (
-                  <button
-                    onClick={handleClearData}
-                    className="text-slate-500 hover:text-red-400 transition-colors p-1 rounded hover:bg-slate-700"
-                    title="Xóa toàn bộ dữ liệu"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-                <span className="text-[10px] text-slate-500">
-                  {lockedMatrix ? "Chế độ Nuôi: Chỉ thêm ngày mới" : "Hỗ trợ Excel copy-paste"}
-                </span>
-              </div>
-            </div>
-
+          {/* Editor Area */}
+          <div className="flex-1 flex flex-col relative overflow-hidden">
             {lockedMatrix ? (
-              // LOCKED MODE: New Day Input + Read Only List
-              <div className="flex flex-col h-full overflow-hidden">
-                {/* New Day Input Section */}
-                <div className="p-3 bg-emerald-900/10 border-b border-emerald-900/30 space-y-2">
-                  <label className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
-                    <PlusCircle className="w-3 h-3" /> Cập nhật ngày mới (Tự động cắt đuôi)
+              <div className="absolute inset-0 z-10 flex flex-col">
+                {/* New Day Input Overlay */}
+                <div className="p-4 bg-emerald-900/10 border-b border-emerald-500/20 backdrop-blur-md">
+                  <label className="text-xs font-bold text-emerald-400 uppercase flex items-center gap-2 mb-2">
+                    <PlusCircle className="w-4 h-4" /> Cập nhật ngày mới (Auto-Trim)
                   </label>
                   <div className="flex gap-2">
                     <input
@@ -558,42 +526,38 @@ const Mega645AnalyzerV4 = () => {
                       value={newDayInput}
                       onChange={(e) => setNewDayInput(e.target.value)}
                       placeholder="VD: 29-11-2023 01 02 03 04 05 06"
-                      className="flex-1 bg-slate-950 border border-emerald-500/30 rounded px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      className="flex-1 bg-slate-950/80 border border-emerald-500/30 rounded-lg px-4 py-3 text-sm text-emerald-100 font-mono focus:outline-none focus:border-emerald-500 shadow-inner"
                       onKeyDown={(e) => e.key === 'Enter' && handleUpdateNewDay()}
                     />
                     <button
                       onClick={handleUpdateNewDay}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1 rounded text-xs font-bold transition-colors whitespace-nowrap"
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-lg shadow-emerald-900/20 transition-all"
                     >
-                      Thêm & Xong Kỳ {currentDay}
+                      Thêm
                     </button>
                   </div>
                 </div>
 
-                {/* Read Only Data View */}
-                <div className="flex flex-1 overflow-hidden relative opacity-75 grayscale-[0.3]">
-                  <div className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
-                    <pre className="leading-relaxed">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
+                {/* Read Only Content */}
+                <div className="flex-1 flex overflow-hidden opacity-50 grayscale-[0.5] pointer-events-none">
+                  <div className="bg-slate-950/50 text-slate-600 text-xs font-mono p-4 text-right border-r border-slate-800 select-none w-12">
+                    <pre className="leading-loose">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
                   </div>
                   <textarea
-                    className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-400 whitespace-pre resize-none leading-relaxed cursor-not-allowed"
+                    className="flex-1 bg-transparent text-sm font-mono p-4 text-slate-300 resize-none leading-loose"
                     value={rawData}
                     readOnly
                   />
                 </div>
               </div>
             ) : (
-              // EDIT MODE: Standard Textarea
-              <div className="flex flex-1 overflow-hidden relative">
-                {/* Line Numbers */}
-                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-[10px] font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
-                  <pre className="leading-relaxed">{lineNumbers}</pre>
+              <div className="flex-1 flex overflow-hidden">
+                <div ref={lineNumberRef} className="bg-slate-950/50 text-slate-600 text-xs font-mono p-4 text-right border-r border-slate-800 select-none overflow-hidden w-12">
+                  <pre className="leading-loose">{lineNumbers}</pre>
                 </div>
-
-                {/* Text Area */}
                 <textarea
                   ref={textareaRef}
-                  className="flex-1 bg-black text-[10px] font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                  className="flex-1 bg-transparent text-sm font-mono p-4 focus:outline-none text-slate-300 whitespace-pre resize-none leading-loose selection:bg-emerald-500/30"
                   value={rawData}
                   onChange={(e) => setRawData(e.target.value)}
                   onScroll={() => {
@@ -606,136 +570,117 @@ const Mega645AnalyzerV4 = () => {
                 />
               </div>
             )}
-
-            <div className="h-40 border-t border-slate-800 p-2">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={chartData} margin={{ top: 20, right: 5, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                  <XAxis
-                    dataKey="name"
-                    tickFormatter={(val) => parseInt(val) < 10 ? `0${val}` : val}
-                    tick={{ fill: '#94a3b8', fontSize: 10 }}
-                    interval={0}
-                  />
-                  <YAxis hide />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '12px', color: '#fff' }}
-                    cursor={{ fill: '#334155', opacity: 0.2 }}
-                    formatter={(value: number) => [`${value} lần`, 'Xuất hiện']}
-                    labelFormatter={(label) => `Số ${parseInt(label) < 10 ? '0' + label : label}`}
-                  />
-                  <Bar dataKey="freq" fill="#10b981" radius={[4, 4, 0, 0]}>
-                    <LabelList dataKey="freq" position="top" fill="#fff" fontSize={10} formatter={(val: any) => Number(val) > 0 ? String(val) : ''} />
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
           </div>
-        </div>
 
-        {/* RIGHT PANEL: CORE LOGIC (8 Cols) */}
-        <div className="xl:col-span-8 space-y-6">
+          {/* Mini Chart (Bottom of Left Panel) */}
+          <div className="h-32 border-t border-slate-800 bg-slate-900/30 p-2">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData}>
+                <Bar dataKey="freq" fill="#10b981" radius={[2, 2, 0, 0]} />
+                <Tooltip
+                  cursor={{ fill: 'transparent' }}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '10px' }}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
 
-          {/* POOL DISPLAY */}
-          <div className="bg-slate-900 p-4 rounded-xl border border-slate-800 shadow-lg">
-            <div className="flex justify-between items-start mb-4">
-              <h3 className="text-sm font-bold text-slate-300 uppercase">Pool 10 Số Tối Ưu</h3>
-              <div className="flex gap-4 text-[10px] text-slate-500">
-                <span className="flex items-center gap-1"><Flame className="w-3 h-3 text-red-500" /> HOT</span>
-                <span className="flex items-center gap-1"><Activity className="w-3 h-3 text-amber-500" /> WARM</span>
-                <span className="flex items-center gap-1"><Snowflake className="w-3 h-3 text-blue-500" /> COLD</span>
-              </div>
-            </div>
+        {/* --- RIGHT PANEL: MATRIX RỘNG MỞ --- */}
+        <section className="flex-1 flex flex-col bg-slate-950 relative">
 
-            <div className="flex flex-wrap gap-3">
+          {/* Top Control Bar */}
+          <div className="flex-none p-4 border-b border-slate-800 flex justify-between items-start bg-slate-900/20">
+            {/* Pool Display */}
+            <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
               {selectedPool.map((item, idx) => (
-                <div key={idx} className={`flex flex-col items-center justify-center w-12 h-14 rounded-lg border-b-4 shadow-lg transition-transform hover:scale-110 ${item.type === 'HOT' ? 'bg-gradient-to-br from-red-500 to-red-700 border-red-900' :
-                  item.type === 'COLD' ? 'bg-gradient-to-br from-blue-500 to-blue-700 border-blue-900' :
-                    'bg-gradient-to-br from-amber-500 to-amber-700 border-amber-900'
-                  }`}>
-                  <span className="text-lg font-bold text-white leading-none">
-                    {item.num < 10 ? `0${item.num}` : item.num}
-                  </span>
-                  <span className="text-[10px] font-medium text-white/80 mt-1">
-                    {item.count}L
-                  </span>
+                <div key={idx} className={`
+                    flex flex-col items-center justify-center w-10 h-12 rounded border-b-2 shadow-lg flex-shrink-0
+                    ${item.type === 'HOT' ? 'bg-red-900/20 border-red-500 text-red-400' :
+                    item.type === 'COLD' ? 'bg-blue-900/20 border-blue-500 text-blue-400' :
+                      'bg-amber-900/20 border-amber-500 text-amber-400'
+                  }
+                  `}>
+                  <span className="text-sm font-bold">{item.num < 10 ? `0${item.num}` : item.num}</span>
+                  <span className="text-[8px] opacity-70">{item.count}</span>
                 </div>
               ))}
             </div>
-          </div>
 
-          {/* CONTROLS */}
-          <div className="flex gap-3">
-            {!lockedMatrix ? (
-              <button onClick={handleLock} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-lg font-bold shadow-lg shadow-emerald-900/20 transition-all flex justify-center items-center gap-2 border border-emerald-500/50">
-                <Save className="w-5 h-5" /> KÍCH HOẠT CHIẾN DỊCH (NGÀY 1)
-              </button>
-            ) : (
-              <>
-                <button onClick={handleNextDay} className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold transition-all flex justify-center items-center gap-2 border border-blue-500/50">
-                  <Calendar className="w-5 h-5" /> HOÀN THÀNH KỲ {currentDay} {'->'} {currentDay + 1}
+            {/* Main Action Buttons */}
+            <div className="flex gap-2 ml-4">
+              {!lockedMatrix ? (
+                <button
+                  onClick={handleLock}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-6 py-3 rounded-lg font-bold shadow-lg shadow-emerald-900/30 transition-all border border-emerald-500/50"
+                >
+                  <Lock className="w-4 h-4" /> KHÓA & NUÔI
                 </button>
-                <button onClick={handleReset} title="Reset" className="px-6 bg-slate-800 hover:bg-slate-700 text-red-400 rounded-lg font-bold border border-slate-700 transition-colors">
-                  <RotateCcw className="w-5 h-5" />
-                </button>
-              </>
-            )}
-          </div>
-
-          {/* MATRICES COMPARISON */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-            {/* LOCKED MATRIX */}
-            <div className={`rounded-xl border p-1 ${lockedMatrix ? 'bg-slate-900 border-emerald-500/50' : 'bg-slate-900/30 border-slate-800 dashed'}`}>
-              <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-900/50 rounded-t-xl">
-                <div>
-                  <h3 className="font-bold text-white text-sm flex items-center gap-2">
-                    <Check className={`w-4 h-4 ${lockedMatrix ? 'text-emerald-400' : 'text-slate-600'}`} />
-                    Luồng Tĩnh (LOCKED)
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5 ml-6">Cố định - Không đổi khi nhập mới</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={handleNextDay}
+                    className="flex items-center gap-2 bg-amber-600 hover:bg-amber-500 text-white px-6 py-2 rounded-lg font-bold shadow-lg shadow-amber-900/30 transition-all border border-amber-500/50"
+                  >
+                    <Calendar className="w-4 h-4" /> HOÀN THÀNH KỲ {currentDay}
+                  </button>
+                  <button
+                    onClick={handleUnlock}
+                    className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-300 px-6 py-1.5 rounded-lg text-xs font-bold border border-slate-700 transition-all"
+                  >
+                    <Unlock className="w-3 h-3" /> MỞ KHÓA (SỬA GỐC)
+                  </button>
                 </div>
-                {lockedMatrix && <span className="text-[10px] bg-emerald-900 text-emerald-400 px-2 py-0.5 rounded">ĐANG NUÔI</span>}
-              </div>
+              )}
+            </div>
+          </div>
 
-              <div className="p-3 space-y-3 max-h-[600px] overflow-y-auto">
+          {/* Matrix Content - Full Height */}
+          <div className="flex-1 grid grid-cols-2 divide-x divide-slate-800 overflow-hidden">
+
+            {/* LEFT: LOCKED MATRIX */}
+            <div className="flex flex-col overflow-hidden bg-slate-900/10">
+              <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
+                <h3 className="text-xs font-bold text-emerald-500 flex items-center gap-2">
+                  <Check className="w-4 h-4" /> LUỒNG TĨNH (LOCKED)
+                </h3>
+                {lockedMatrix && <span className="text-[9px] bg-emerald-900/50 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">ĐANG NUÔI</span>}
+              </div>
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-thin scrollbar-thumb-slate-700">
                 {lockedMatrix ? (
                   lockedMatrix.map((stats, idx) => (
-                    <TicketRowV4 key={idx} stats={stats} index={idx} isLocked={true} />
+                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} />
                   ))
                 ) : (
-                  <div className="text-center py-10 text-slate-600 text-xs italic">
-                    Chưa chốt số. <br />Nhấn nút xanh ở trên để bắt đầu.
+                  <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
+                    <Lock className="w-8 h-8 opacity-20" />
+                    <span className="text-xs">Chưa khóa dữ liệu</span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* LIVE SUGGESTION */}
-            <div className="rounded-xl border border-slate-800 bg-slate-900">
-              <div className="p-3 border-b border-slate-800 flex justify-between items-center bg-slate-800/50 rounded-t-xl">
-                <div>
-                  <h3 className="font-bold text-slate-300 text-sm flex items-center gap-2">
-                    <Activity className="w-4 h-4 text-yellow-500" />
-                    Luồng Động (LIVE)
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mt-0.5 ml-6">Tự động tính lại theo dữ liệu mới</p>
-                </div>
-                <span className="text-[10px] text-yellow-500/80 bg-yellow-900/10 px-2 py-0.5 rounded border border-yellow-900/30">Auto-Update</span>
+            {/* RIGHT: LIVE MATRIX */}
+            <div className="flex flex-col overflow-hidden bg-slate-900/10">
+              <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
+                <h3 className="text-xs font-bold text-amber-500 flex items-center gap-2">
+                  <Activity className="w-4 h-4" /> LUỒNG ĐỘNG (LIVE)
+                </h3>
+                <span className="text-[9px] bg-amber-900/50 text-amber-300 px-2 py-0.5 rounded border border-amber-800">AUTO-UPDATE</span>
               </div>
-
-              <div className="p-3 space-y-3 max-h-[600px] overflow-y-auto">
+              <div className="flex-1 overflow-y-auto p-3 space-y-2 scrollbar-thin scrollbar-thumb-slate-700">
                 {generatedMatrix.map((stats, idx) => (
-                  <TicketRowV4 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
+                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
                 ))}
               </div>
             </div>
 
           </div>
-        </div>
-      </div>
+        </section>
+
+      </main>
     </div>
   );
 };
 
-export default Mega645AnalyzerV4;
+export default Mega645AnalyzerV10;
