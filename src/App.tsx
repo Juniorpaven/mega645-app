@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
-import { FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
+import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
