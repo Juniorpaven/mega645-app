@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, Cell } from 'recharts';
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
@@ -360,7 +360,7 @@ const Mega645AnalyzerV10 = () => {
     );
   };
 
-  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, poolMap }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, poolMap?: Record<number, string> }) => {
+  const TicketRowV10 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
     const isBad = stats.status === 'BAD';
     const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
@@ -391,20 +391,20 @@ const Mega645AnalyzerV10 = () => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
               const isMatch = !isLocked && lockedSet?.has(n);
 
-              // Determine color based on Pool Status for Live Matrix
+              // LIVE MATRIX: Gold Border Style (No Hot/Cold Colors)
+              // LOCKED MATRIX: Green Tint
               let colorClass = 'bg-slate-800 text-slate-200 border border-slate-700';
+
               if (isLocked) {
                 colorClass = 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50';
-              } else if (poolMap) {
-                const status = poolMap[n];
-                if (status === 'HOT') colorClass = 'bg-red-600 text-white border border-red-500 shadow-lg shadow-red-900/20';
-                else if (status === 'COLD') colorClass = 'bg-blue-600 text-white border border-blue-500 shadow-lg shadow-blue-900/20';
-                else if (status === 'WARM') colorClass = 'bg-amber-600 text-white border border-amber-500 shadow-lg shadow-amber-900/20';
+              } else {
+                // Live Matrix Style: Dark BG + Gold Border + Gold Text
+                colorClass = 'bg-slate-950 text-yellow-500 border border-yellow-600/50 shadow-[0_0_8px_rgba(234,179,8,0.15)]';
               }
 
-              // Match highlight overrides standard pool color if needed, or adds glow
+              // Match highlight for Live Matrix
               if (isMatch && !isLocked) {
-                colorClass += ' shadow-[0_0_15px_rgba(234,179,8,0.6)] ring-2 ring-yellow-400 z-10 scale-110 transition-transform';
+                colorClass = 'bg-yellow-900/20 text-yellow-400 border border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.6)] ring-1 ring-yellow-400 z-10 scale-110';
               }
 
               return (
@@ -435,9 +435,22 @@ const Mega645AnalyzerV10 = () => {
   };
 
   const chartData = useMemo(() => {
-    return Object.keys(frequency)
+    const data = Object.keys(frequency)
       .map(k => ({ name: k, freq: frequency[parseInt(k)] }))
       .sort((a, b) => parseInt(a.name) - parseInt(b.name));
+
+    // Determine Hot/Warm/Cold for coloring
+    const freqs = data.map(d => d.freq);
+    const max = Math.max(...freqs);
+    const min = Math.min(...freqs);
+    const range = max - min;
+    const hotThreshold = max - (range / 3);
+    const coldThreshold = min + (range / 3);
+
+    return data.map(d => ({
+      ...d,
+      fill: d.freq >= hotThreshold ? '#ef4444' : (d.freq <= coldThreshold ? '#3b82f6' : '#f59e0b')
+    }));
   }, [frequency]);
 
   const lineNumbers = useMemo(() => {
@@ -452,12 +465,6 @@ const Mega645AnalyzerV10 = () => {
     return set;
   }, [lockedMatrix]);
 
-  const poolMap = useMemo(() => {
-    const map: Record<number, string> = {};
-    selectedPool.forEach(p => map[p.num] = p.type);
-    return map;
-  }, [selectedPool]);
-
   return (
     <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden">
 
@@ -467,7 +474,7 @@ const Mega645AnalyzerV10 = () => {
           <HeartPulse className="w-6 h-6 text-red-500" />
           <div>
             <h1 className="text-lg font-bold text-emerald-500">
-              Mega 6/45 Pro V10.1
+              Mega 6/45 Pro V10.4
             </h1>
             <p className="text-[10px] text-slate-500 font-mono">Full Screen & Mobile Optimized</p>
           </div>
@@ -556,11 +563,11 @@ const Mega645AnalyzerV10 = () => {
 
                 {/* Read Only Content */}
                 <div className="flex-1 flex overflow-hidden opacity-50 grayscale-[0.5] pointer-events-none">
-                  <div className="bg-slate-950 text-slate-600 text-lg font-mono p-3 text-right border-r border-slate-800 select-none w-16">
+                  <div className="bg-slate-950 text-slate-600 text-xs font-mono p-3 text-right border-r border-slate-800 select-none w-10">
                     <pre className="leading-relaxed">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
                   </div>
                   <textarea
-                    className="flex-1 bg-black text-lg font-mono p-3 text-slate-400 resize-none leading-relaxed"
+                    className="flex-1 bg-black text-xs font-mono p-3 text-slate-400 resize-none leading-relaxed"
                     value={rawData}
                     readOnly
                   />
@@ -568,12 +575,12 @@ const Mega645AnalyzerV10 = () => {
               </div>
             ) : (
               <div className="flex-1 flex overflow-hidden">
-                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-lg font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-16">
+                <div ref={lineNumberRef} className="bg-slate-950 text-slate-600 text-xs font-mono p-3 text-right border-r border-slate-800 select-none overflow-hidden w-10">
                   <pre className="leading-relaxed">{lineNumbers}</pre>
                 </div>
                 <textarea
                   ref={textareaRef}
-                  className="flex-1 bg-black text-lg font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
+                  className="flex-1 bg-black text-xs font-mono p-3 focus:outline-none text-slate-300 whitespace-pre resize-none leading-relaxed"
                   value={rawData}
                   onChange={(e) => setRawData(e.target.value)}
                   onScroll={() => {
@@ -592,7 +599,17 @@ const Mega645AnalyzerV10 = () => {
           <div className="h-24 md:h-32 border-t border-slate-800 bg-slate-900/30 p-2">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
-                <Bar dataKey="freq" fill="#10b981" radius={[2, 2, 0, 0]} />
+                <XAxis
+                  dataKey="name"
+                  tick={{ fontSize: 8, fill: '#64748b' }}
+                  interval={0}
+                  height={15}
+                />
+                <Bar dataKey="freq" radius={[2, 2, 0, 0]}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
                 <Tooltip
                   cursor={{ fill: 'transparent' }}
                   contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '10px' }}
@@ -698,7 +715,7 @@ const Mega645AnalyzerV10 = () => {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {generatedMatrix.map((stats, idx) => (
-                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} poolMap={poolMap} />
+                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
                 ))}
               </div>
             </div>
