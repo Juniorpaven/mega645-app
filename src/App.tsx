@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, Cell, LabelList } from 'recharts';
-import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw } from 'lucide-react';
+import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -56,6 +56,60 @@ type TicketStats = {
   score: number;
   status: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'BAD';
   issues: string[];
+};
+
+// --- HELPER: POOL CALCULATION ---
+const getPoolForData = (lines: string[]) => {
+  // 1. Calculate Frequency
+  const freqMap: Record<number, number> = {};
+  for (let i = 1; i <= 45; i++) freqMap[i] = 0;
+
+  let validCount = 0;
+  let firstDate = "N/A";
+
+  lines.forEach((line, idx) => {
+    const parts = line.trim().split(/[\t,;|\s]+/);
+    if (idx === 0 && parts[0]) {
+      if (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.')) {
+        firstDate = parts[0].replace(/[/. ]/g, '-');
+      }
+    }
+
+    const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
+    const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
+
+    if (validRangeNumbers.length >= 6) {
+      const finalNums = validRangeNumbers.slice(-6);
+      finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
+      validCount++;
+    }
+  });
+
+  if (validCount < 10) return null;
+
+  // 2. Select Pool
+  const freqArray = Object.keys(freqMap).map(k => ({ num: parseInt(k), count: freqMap[parseInt(k)] }));
+  freqArray.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.num - b.num;
+  });
+
+  const hot = freqArray.slice(0, 3).map(i => i.num);
+  const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
+  const warm = freqArray.slice(midStart, midStart + 4).map(i => i.num);
+  const cold = freqArray.slice(Math.max(0, freqArray.length - 3)).map(i => i.num);
+
+  let poolIndices = Array.from(new Set([...hot, ...warm, ...cold]));
+  let ptr = 0;
+  while (poolIndices.length < 10 && ptr < freqArray.length) {
+    if (!poolIndices.includes(freqArray[ptr].num)) poolIndices.push(freqArray[ptr].num);
+    ptr++;
+  }
+
+  return {
+    date: firstDate,
+    pool: poolIndices.slice(0, 10).sort((a, b) => a - b)
+  };
 };
 
 const Mega645AnalyzerV10 = () => {
@@ -285,6 +339,21 @@ const Mega645AnalyzerV10 = () => {
     setGeneratedMatrix(analyzedMatrix);
 
   }, [frequency]);
+
+  // --- POOL HISTORY ---
+  const poolHistory = useMemo(() => {
+    const allLines = rawData.trim().split('\n');
+    const history = [];
+
+    // Calculate for past 7 periods (offsets 1 to 7)
+    for (let i = 1; i <= 7; i++) {
+      const slice = allLines.slice(i, i + 30);
+      if (slice.length < 30) break;
+      const res = getPoolForData(slice);
+      if (res) history.push({ ...res, offset: i });
+    }
+    return history;
+  }, [rawData]);
 
   // --- HANDLERS ---
   const handleLock = () => { setLockedMatrix(generatedMatrix); setCurrentDay(1); };
@@ -683,6 +752,31 @@ const Mega645AnalyzerV10 = () => {
                   </div>
                 ))}
               </div>
+
+              {/* POOL HISTORY */}
+              {poolHistory.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-slate-700/50">
+                  <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
+                    <History className="w-3 h-3" /> Lịch sử 7 kỳ gần nhất
+                  </h3>
+                  <div className="space-y-2">
+                    {poolHistory.map((hist, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-xs bg-slate-950/50 p-2 rounded border border-slate-800/50">
+                        <div className="w-16 flex-none text-slate-500 font-mono text-[10px]">
+                          {hist.date}
+                        </div>
+                        <div className="flex-1 flex gap-1.5 flex-wrap">
+                          {hist.pool.map((n, i) => (
+                            <span key={i} className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-800 text-slate-300 font-bold text-[10px] border border-slate-700">
+                              {n < 10 ? `0${n}` : n}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Main Action Buttons */}
