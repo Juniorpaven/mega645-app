@@ -187,7 +187,8 @@ const Mega645AnalyzerV4 = () => {
 
   // --- ENGINE: DATA PROCESSING ---
   useEffect(() => {
-    const lines = rawData.trim().split('\n');
+    // V9: Auto-Trim - Only process top 30 lines to prevent dilution
+    const lines = rawData.trim().split('\n').slice(0, 30);
     const validDraws: { date: string, numbers: number[] }[] = [];
     const freqMap: Record<number, number> = {};
     for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
@@ -447,7 +448,7 @@ const Mega645AnalyzerV4 = () => {
         <div>
           <h1 className="text-2xl font-bold text-emerald-500 flex items-center gap-2">
             <HeartPulse className="w-8 h-8 text-red-500" />
-            Mega 6/45 Pro V7: Cross-Device Sync
+            Mega 6/45 Pro V9: Auto-Trim Logic
           </h1>
           <div className="flex items-center gap-3">
             <p className="text-slate-400 text-xs mt-1 font-mono">Engine: 3-4-3 Selection + 5-Filter Scoring System</p>
