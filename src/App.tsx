@@ -138,7 +138,8 @@ const Mega645AnalyzerV10 = () => {
     }
 
     const currentLines = rawData.trim().split('\n');
-    const newLines = [newDayInput.trim(), ...currentLines].slice(0, 30);
+    // Keep history, don't slice to 30
+    const newLines = [newDayInput.trim(), ...currentLines];
 
     setRawData(newLines.join('\n'));
     setNewDayInput('');
@@ -220,6 +221,7 @@ const Mega645AnalyzerV10 = () => {
 
   // --- ENGINE: DATA PROCESSING ---
   useEffect(() => {
+    // Only process top 30 lines for stats
     const lines = rawData.trim().split('\n').slice(0, 30);
     const validDraws: { date: string, numbers: number[] }[] = [];
     const freqMap: Record<number, number> = {};
@@ -465,11 +467,49 @@ const Mega645AnalyzerV10 = () => {
     return set;
   }, [lockedMatrix]);
 
+  // Helper to render lines for the new 2-column view
+  const renderInputLines = () => {
+    const allLines = rawData.split('\n');
+    const col1 = allLines.slice(0, 15);
+    const col2 = allLines.slice(15, 30);
+    const history = allLines.slice(30);
+
+    const LineItem = ({ line, idx, isHistory = false }: { line: string, idx: number, isHistory?: boolean }) => (
+      <div className={`flex items-center gap-2 font-mono ${isHistory ? 'opacity-30' : 'text-slate-300'}`}>
+        <span className="w-6 text-right text-slate-600 select-none">{idx + 1}</span>
+        <span className="whitespace-pre">{line}</span>
+      </div>
+    );
+
+    return (
+      <div className="flex flex-col h-full overflow-y-auto p-3 bg-black text-xs md:text-sm leading-loose">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-0">
+          {/* Column 1 */}
+          <div className="flex flex-col">
+            {col1.map((line, i) => <LineItem key={i} line={line} idx={i} />)}
+          </div>
+          {/* Column 2 */}
+          <div className="flex flex-col">
+            {col2.map((line, i) => <LineItem key={i + 15} line={line} idx={i + 15} />)}
+          </div>
+        </div>
+
+        {/* History / Dimmed Lines */}
+        {history.length > 0 && (
+          <div className="mt-4 pt-4 border-t border-slate-800/50 flex flex-col">
+            <div className="text-[10px] text-slate-700 font-bold uppercase mb-2">Lịch sử (Đã loại bỏ khỏi tính toán)</div>
+            {history.map((line, i) => <LineItem key={i + 30} line={line} idx={i + 30} isHistory={true} />)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div className="h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-hidden">
+    <div className="min-h-screen h-auto md:h-screen flex flex-col bg-slate-950 text-slate-100 font-sans overflow-x-hidden">
 
       {/* --- HEADER --- */}
-      <header className="h-14 flex-none bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-50">
+      <header className="h-14 flex-none bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 md:px-6 z-50 sticky top-0">
         <div className="flex items-center gap-3">
           <HeartPulse className="w-6 h-6 text-red-500" />
           <div>
@@ -507,7 +547,7 @@ const Mega645AnalyzerV10 = () => {
       <main className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
         {/* --- LEFT PANEL: INPUT KHỔNG LỒ --- */}
-        <section className="w-full md:w-[40%] flex flex-col border-b md:border-b-0 md:border-r border-slate-800 bg-slate-900/20 relative h-[40%] md:h-full">
+        <section className="w-full md:w-[40%] flex flex-col border-b md:border-b-0 md:border-r border-slate-800 bg-slate-900/20 relative h-[50vh] md:h-full">
 
           {/* Toolbar */}
           <div className="flex-none p-2 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
@@ -539,7 +579,7 @@ const Mega645AnalyzerV10 = () => {
             {lockedMatrix ? (
               <div className="absolute inset-0 z-10 flex flex-col">
                 {/* New Day Input Overlay */}
-                <div className="p-3 bg-emerald-900/10 border-b border-emerald-500/20">
+                <div className="p-3 bg-emerald-900/10 border-b border-emerald-500/20 flex-none">
                   <label className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-2 mb-1">
                     <PlusCircle className="w-3 h-3" /> Cập nhật ngày mới (Auto-Trim)
                   </label>
@@ -561,16 +601,9 @@ const Mega645AnalyzerV10 = () => {
                   </div>
                 </div>
 
-                {/* Read Only Content */}
-                <div className="flex-1 flex overflow-hidden opacity-50 grayscale-[0.5] pointer-events-none">
-                  <div className="bg-slate-950 text-slate-600 text-sm font-mono p-3 text-right border-r border-slate-800 select-none w-10">
-                    <pre className="leading-loose">{Array.from({ length: 30 }, (_, i) => i + 1).join('\n')}</pre>
-                  </div>
-                  <textarea
-                    className="flex-1 bg-black text-sm font-mono p-3 text-slate-400 resize-none leading-loose"
-                    value={rawData}
-                    readOnly
-                  />
+                {/* Read Only Content - 2 Columns */}
+                <div className="flex-1 overflow-hidden relative">
+                  {renderInputLines()}
                 </div>
               </div>
             ) : (
@@ -596,7 +629,7 @@ const Mega645AnalyzerV10 = () => {
           </div>
 
           {/* Mini Chart */}
-          <div className="h-24 md:h-32 border-t border-slate-800 bg-slate-900/30 p-2">
+          <div className="h-24 md:h-32 border-t border-slate-800 bg-slate-900/30 p-2 flex-none">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData}>
                 <XAxis
@@ -621,7 +654,7 @@ const Mega645AnalyzerV10 = () => {
         </section>
 
         {/* --- RIGHT PANEL: MATRIX RỘNG MỞ --- */}
-        <section className="flex-1 flex flex-col bg-slate-950 relative h-[60%] md:h-full">
+        <section className="flex-1 flex flex-col bg-slate-950 relative h-auto md:h-full">
 
           {/* Top Control Bar */}
           <div className="flex-none p-4 border-b border-slate-800 flex flex-col gap-4 bg-slate-900/20">
@@ -685,7 +718,7 @@ const Mega645AnalyzerV10 = () => {
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 overflow-hidden">
 
             {/* LEFT: LOCKED MATRIX */}
-            <div className="flex flex-col overflow-hidden bg-slate-900/10">
+            <div className="flex flex-col overflow-hidden bg-slate-900/10 h-[50vh] md:h-full">
               <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
                 <h3 className="text-xs font-bold text-emerald-500 flex items-center gap-2 uppercase">
                   <Check className="w-3 h-3" /> Luồng Tĩnh (LOCKED)
@@ -707,7 +740,7 @@ const Mega645AnalyzerV10 = () => {
             </div>
 
             {/* RIGHT: LIVE MATRIX */}
-            <div className="flex flex-col overflow-hidden bg-slate-900/10">
+            <div className="flex flex-col overflow-hidden bg-slate-900/10 h-[50vh] md:h-full">
               <div className="p-3 border-b border-slate-800 bg-slate-900/50 sticky top-0 z-10 flex justify-between items-center">
                 <h3 className="text-xs font-bold text-amber-500 flex items-center gap-2 uppercase">
                   <Activity className="w-3 h-3" /> Luồng Động (LIVE)
