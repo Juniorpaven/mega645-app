@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer, CartesianGrid, LabelList, XAxis, YAxis } from 'recharts';
-import { Save, FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Flame, Snowflake, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
+import { BarChart, Bar, Tooltip, ResponsiveContainer } from 'recharts';
+import { FileSpreadsheet, RotateCcw, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Unlock, Lock } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -76,13 +76,10 @@ const Mega645AnalyzerV10 = () => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumberRef = useRef<HTMLDivElement>(null);
 
-  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving'>('saved');
-  const [lastSaved, setLastSaved] = useState<string>("");
   const [newDayInput, setNewDayInput] = useState('');
 
   // --- PERSISTENCE ---
   useEffect(() => {
-    setSaveStatus('saving');
     const timer = setTimeout(() => {
       localStorage.setItem('mega645_rawData', rawData);
       localStorage.setItem('mega645_currentDay', currentDay.toString());
@@ -91,8 +88,6 @@ const Mega645AnalyzerV10 = () => {
       } else {
         localStorage.removeItem('mega645_lockedMatrix');
       }
-      setSaveStatus('saved');
-      setLastSaved(new Date().toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit', day: '2-digit', month: '2-digit' }));
     }, 500);
     return () => clearTimeout(timer);
   }, [rawData, currentDay, lockedMatrix]);
@@ -292,7 +287,6 @@ const Mega645AnalyzerV10 = () => {
   // --- HANDLERS ---
   const handleLock = () => { setLockedMatrix(generatedMatrix); setCurrentDay(1); };
   const handleUnlock = () => { setLockedMatrix(null); }; // Unlock to edit
-  const handleReset = () => { setLockedMatrix(null); setCurrentDay(1); };
   const handleNextDay = () => { if (currentDay < 7) setCurrentDay(currentDay + 1); };
 
   const handleExport = async () => {
