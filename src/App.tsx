@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, Cell, LabelList } from 'recharts';
+
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
@@ -106,9 +106,14 @@ const getPoolForData = (lines: string[]) => {
     ptr++;
   }
 
+  const finalPool = poolIndices.slice(0, 10).sort((a, b) => a - b).map(num => ({
+    num,
+    type: hot.includes(num) ? 'HOT' : cold.includes(num) ? 'COLD' : 'WARM'
+  }));
+
   return {
     date: firstDate,
-    pool: poolIndices.slice(0, 10).sort((a, b) => a - b)
+    pool: finalPool
   };
 };
 
@@ -117,6 +122,7 @@ const Mega645AnalyzerV10 = () => {
   const [rawData, setRawData] = useState(() => localStorage.getItem('mega645_rawData') || INITIAL_EXCEL_DATA);
   const [processedData, setProcessedData] = useState<{ date: string, numbers: number[] }[]>([]);
   const [frequency, setFrequency] = useState<Record<number, number>>({});
+  const [prevFrequency, setPrevFrequency] = useState<Record<number, number>>({});
   const [selectedPool, setSelectedPool] = useState<{ num: number, type: string, count: number }[]>([]);
 
   // Strategy State
@@ -275,31 +281,46 @@ const Mega645AnalyzerV10 = () => {
 
   // --- ENGINE: DATA PROCESSING ---
   useEffect(() => {
-    // Only process top 30 lines for stats
-    const lines = rawData.trim().split('\n').slice(0, 30);
-    const validDraws: { date: string, numbers: number[] }[] = [];
-    const freqMap: Record<number, number> = {};
-    for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
+    const allLines = rawData.trim().split('\n');
 
-    lines.forEach(line => {
-      const parts = line.trim().split(/[\t,;|\s]+/);
-      let dateStr = "N/A";
-      if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
-        dateStr = parts[0].replace(/[/. ]/g, '-');
-      }
+    const processSegment = (lines: string[]) => {
+      const freqMap: Record<number, number> = {};
+      for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
+      const validDraws: { date: string, numbers: number[] }[] = [];
 
-      const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
-      const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
+      lines.forEach(line => {
+        const parts = line.trim().split(/[\t,;|\s]+/);
+        let dateStr = "N/A";
+        if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
+          dateStr = parts[0].replace(/[/. ]/g, '-');
+        }
 
-      if (validRangeNumbers.length >= 6) {
-        const finalNums = validRangeNumbers.slice(-6);
-        validDraws.push({ date: dateStr, numbers: finalNums });
-        finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
-      }
-    });
+        const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
+        const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
 
-    setProcessedData(validDraws);
-    setFrequency(freqMap);
+        if (validRangeNumbers.length >= 6) {
+          const finalNums = validRangeNumbers.slice(-6);
+          validDraws.push({ date: dateStr, numbers: finalNums });
+          finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
+        }
+      });
+      return { freqMap, validDraws };
+    };
+
+    // 1. Current Data (Top 30)
+    const current = processSegment(allLines.slice(0, 30));
+    setProcessedData(current.validDraws);
+    setFrequency(current.freqMap);
+
+    // 2. Previous Data (Offset 1, 30 lines)
+    // This simulates the state BEFORE the latest line was added
+    if (allLines.length > 1) {
+      const prev = processSegment(allLines.slice(1, 31));
+      setPrevFrequency(prev.freqMap);
+    } else {
+      setPrevFrequency({});
+    }
+
   }, [rawData]);
 
   // --- ENGINE: SELECTION ---
@@ -412,6 +433,68 @@ const Mega645AnalyzerV10 = () => {
   };
 
   // --- COMPONENTS ---
+  const FrequencyHeatmap = ({
+    data,
+    title,
+    highlight = [],
+    isPrevious = false
+  }: {
+    data: Record<number, number>,
+    title: string,
+    highlight?: number[],
+    isPrevious?: boolean
+  }) => {
+    const vals = Object.values(data);
+    const max = Math.max(...vals, 1);
+    const min = Math.min(...vals, 0);
+    const range = max - min;
+    const hotThreshold = max - (range / 3);
+    const coldThreshold = min + (range / 3);
+
+    return (
+      <div className={`flex flex-col gap-2 bg-slate-900/50 p-2 rounded-lg border border-slate-800 transition-all ${isPrevious ? 'opacity-60 grayscale-[0.3]' : ''}`}>
+        <div className="flex justify-between items-center">
+          <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">{title}</h3>
+        </div>
+        <div className="grid grid-cols-9 gap-1">
+          {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
+            const freq = data[num] || 0;
+            const isHighlighted = highlight.includes(num);
+
+            // 3-Level Logic: Hot / Warm / Cold
+            let bgClass = 'bg-slate-800 text-slate-500 border-slate-700'; // Default (0 freq or error)
+
+            if (freq > 0) {
+              if (freq >= hotThreshold) {
+                bgClass = 'bg-red-600 text-white border-red-800 shadow-red-900/50';
+              } else if (freq <= coldThreshold) {
+                bgClass = 'bg-blue-600 text-white border-blue-800 shadow-blue-900/50';
+              } else {
+                bgClass = 'bg-amber-500 text-black border-amber-700 shadow-amber-900/50';
+              }
+            }
+
+            return (
+              <div
+                key={num}
+                className={`
+                  relative w-full aspect-square rounded-full flex flex-col items-center justify-center transition-all border-2
+                  ${bgClass}
+                  ${isHighlighted ? 'ring-1 ring-white scale-110 z-10 shadow-lg' : 'opacity-90 hover:opacity-100 hover:scale-105'}
+                `}
+                title={`Số ${num}: ${freq} lần`}
+              >
+                <span className="text-[9px] font-bold leading-none">{num < 10 ? `0${num}` : num}</span>
+                <span className="text-[7px] font-bold leading-none mt-px opacity-80">{freq}</span>
+                {isHighlighted && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
   const HealthBadge = ({ score, status }: { score: number, status: string }) => {
     let color = 'bg-slate-500';
     if (status === 'EXCELLENT') color = 'bg-emerald-500';
@@ -457,7 +540,7 @@ const Mega645AnalyzerV10 = () => {
 
         {/* Numbers & Stats */}
         <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
-          <div className="flex gap-2 flex-wrap justify-center">
+          <div className="flex gap-1 md:gap-1.5 flex-nowrap overflow-x-auto max-w-full py-2 px-2 justify-start md:justify-center scrollbar-hide">
             {stats.numbers.map((n, i) => {
               const isDouble = DOUBLE_NUMBERS.includes(n);
               const isMatch = !isLocked && lockedSet?.has(n);
@@ -479,9 +562,9 @@ const Mega645AnalyzerV10 = () => {
               }
 
               return (
-                <span key={i} className={`relative font-mono font-bold w-10 h-10 flex items-center justify-center rounded-lg text-lg ${colorClass}`}>
+                <span key={i} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base ${colorClass}`}>
                   {n < 10 ? `0${n}` : n}
-                  {isDouble && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
+                  {isDouble && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
                 </span>
               );
             })}
@@ -505,24 +588,7 @@ const Mega645AnalyzerV10 = () => {
     );
   };
 
-  const chartData = useMemo(() => {
-    const data = Object.keys(frequency)
-      .map(k => ({ name: k, freq: frequency[parseInt(k)] }))
-      .sort((a, b) => parseInt(a.name) - parseInt(b.name));
 
-    // Determine Hot/Warm/Cold for coloring
-    const freqs = data.map(d => d.freq);
-    const max = Math.max(...freqs);
-    const min = Math.min(...freqs);
-    const range = max - min;
-    const hotThreshold = max - (range / 3);
-    const coldThreshold = min + (range / 3);
-
-    return data.map(d => ({
-      ...d,
-      fill: d.freq >= hotThreshold ? '#ef4444' : (d.freq <= coldThreshold ? '#3b82f6' : '#f59e0b')
-    }));
-  }, [frequency]);
 
   const lineNumbers = useMemo(() => {
     const count = rawData.split('\n').length;
@@ -697,28 +763,20 @@ const Mega645AnalyzerV10 = () => {
             )}
           </div>
 
-          {/* Mini Chart */}
-          <div className="h-24 md:h-32 border-t border-slate-800 bg-slate-900/30 p-2 flex-none">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData}>
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 8, fill: '#64748b' }}
-                  interval={0}
-                  height={15}
-                />
-                <Bar dataKey="freq" radius={[2, 2, 0, 0]}>
-                  <LabelList dataKey="freq" position="top" fill="#cbd5e1" fontSize={10} fontWeight="bold" />
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-                <Tooltip
-                  cursor={{ fill: 'transparent' }}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', fontSize: '10px' }}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+          {/* Heatmap Comparison */}
+          <div className="h-auto border-t border-slate-800 bg-slate-900/30 p-2 flex-none overflow-y-auto">
+            <div className="grid grid-cols-2 gap-2">
+              <FrequencyHeatmap
+                data={frequency}
+                title="🔥 Hiện Tại"
+                highlight={processedData[0]?.numbers}
+              />
+              <FrequencyHeatmap
+                data={prevFrequency}
+                title="❄️ Trước Đó"
+                isPrevious={true}
+              />
+            </div>
           </div>
         </section>
 
@@ -766,11 +824,18 @@ const Mega645AnalyzerV10 = () => {
                           {hist.date}
                         </div>
                         <div className="flex-1 flex gap-1.5 flex-wrap">
-                          {hist.pool.map((n, i) => (
-                            <span key={i} className="w-5 h-5 flex items-center justify-center rounded-full bg-slate-800 text-slate-300 font-bold text-[10px] border border-slate-700">
-                              {n < 10 ? `0${n}` : n}
-                            </span>
-                          ))}
+                          {hist.pool.map((item, i) => {
+                            let colorClass = 'bg-slate-800 border-slate-700 text-slate-300';
+                            if (item.type === 'HOT') colorClass = 'bg-red-900/40 border-red-800 text-red-400';
+                            if (item.type === 'WARM') colorClass = 'bg-amber-900/40 border-amber-800 text-amber-400';
+                            if (item.type === 'COLD') colorClass = 'bg-blue-900/40 border-blue-800 text-blue-400';
+
+                            return (
+                              <span key={i} className={`w-5 h-5 flex items-center justify-center rounded-full font-bold text-[10px] border ${colorClass}`}>
+                                {item.num < 10 ? `0${item.num}` : item.num}
+                              </span>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
