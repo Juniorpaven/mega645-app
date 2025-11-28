@@ -464,7 +464,7 @@ const Mega645AnalyzerV10 = () => {
             {title} <Maximize2 className="w-2 h-2 opacity-50" />
           </h3>
         </div>
-        <div className="grid grid-cols-9 gap-1">
+        <div className="grid grid-cols-8 gap-1">
           {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
             const freq = data[num] || 0;
             const isHighlighted = highlight.includes(num);
@@ -942,7 +942,7 @@ const Mega645AnalyzerV10 = () => {
             </div>
 
             {/* Render Large Heatmap */}
-            <div className="grid grid-cols-9 gap-2">
+            <div className="grid grid-cols-8 gap-2">
               {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
                 const data = activeHeatmap === 'CURRENT' ? frequency : prevFrequency;
                 const freq = data[num] || 0;
