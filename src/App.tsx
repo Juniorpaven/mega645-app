@@ -124,6 +124,7 @@ const Mega645AnalyzerV10 = () => {
   const [frequency, setFrequency] = useState<Record<number, number>>({});
   const [prevFrequency, setPrevFrequency] = useState<Record<number, number>>({});
   const [selectedPool, setSelectedPool] = useState<{ num: number, type: string, count: number }[]>([]);
+  const [activeHeatmap, setActiveHeatmap] = useState<'CURRENT' | 'PREVIOUS' | null>(null);
 
   // Strategy State
   const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
@@ -437,12 +438,14 @@ const Mega645AnalyzerV10 = () => {
     data,
     title,
     highlight = [],
-    isPrevious = false
+    isPrevious = false,
+    onClick
   }: {
     data: Record<number, number>,
     title: string,
     highlight?: number[],
-    isPrevious?: boolean
+    isPrevious?: boolean,
+    onClick?: () => void
   }) => {
     const vals = Object.values(data);
     const max = Math.max(...vals, 1);
@@ -452,9 +455,14 @@ const Mega645AnalyzerV10 = () => {
     const coldThreshold = min + (range / 3);
 
     return (
-      <div className={`flex flex-col gap-2 bg-slate-900/50 p-2 rounded-lg border border-slate-800 transition-all ${isPrevious ? 'opacity-60 grayscale-[0.3]' : ''}`}>
+      <div
+        onClick={onClick}
+        className={`flex flex-col gap-2 bg-slate-900/50 p-2 rounded-lg border border-slate-800 transition-all cursor-pointer hover:border-slate-600 ${isPrevious ? 'opacity-60 grayscale-[0.3]' : ''}`}
+      >
         <div className="flex justify-between items-center">
-          <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate">{title}</h3>
+          <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate flex items-center gap-1">
+            {title} <Maximize2 className="w-2 h-2 opacity-50" />
+          </h3>
         </div>
         <div className="grid grid-cols-9 gap-1">
           {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
@@ -770,11 +778,13 @@ const Mega645AnalyzerV10 = () => {
                 data={frequency}
                 title="🔥 Hiện Tại"
                 highlight={processedData[0]?.numbers}
+                onClick={() => setActiveHeatmap('CURRENT')}
               />
               <FrequencyHeatmap
                 data={prevFrequency}
                 title="❄️ Trước Đó"
                 isPrevious={true}
+                onClick={() => setActiveHeatmap('PREVIOUS')}
               />
             </div>
           </div>
@@ -796,17 +806,17 @@ const Mega645AnalyzerV10 = () => {
                   <span className="flex items-center gap-1 text-blue-500"><Snowflake className="w-3 h-3" /> COLD</span>
                 </div>
               </div>
-              <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+              <div className="grid grid-cols-5 gap-2 md:flex md:gap-3 md:overflow-x-auto pb-2 scrollbar-hide">
                 {selectedPool.map((item, idx) => (
                   <div key={idx} className={`
-                      flex flex-col items-center justify-center w-16 h-20 rounded-lg shadow-lg flex-shrink-0 border-b-4 transition-transform hover:scale-105
+                      flex flex-col items-center justify-center w-full h-16 md:w-16 md:h-20 rounded-lg shadow-lg flex-shrink-0 border-b-4 transition-transform hover:scale-105
                       ${item.type === 'HOT' ? 'bg-red-600 border-red-800' :
                       item.type === 'COLD' ? 'bg-blue-600 border-blue-800' :
                         'bg-amber-600 border-amber-800'
                     }
                     `}>
-                    <span className="text-3xl font-bold text-white drop-shadow-md">{item.num < 10 ? `0${item.num}` : item.num}</span>
-                    <span className="text-[10px] font-bold text-white/90 bg-black/20 px-1.5 rounded mt-1">{item.count}L</span>
+                    <span className="text-2xl md:text-3xl font-bold text-white drop-shadow-md">{item.num < 10 ? `0${item.num}` : item.num}</span>
+                    <span className="text-[9px] md:text-[10px] font-bold text-white/90 bg-black/20 px-1.5 rounded mt-1">{item.count}L</span>
                   </div>
                 ))}
               </div>
@@ -917,6 +927,66 @@ const Mega645AnalyzerV10 = () => {
         </section>
 
       </main>
+
+      {/* --- HEATMAP MODAL --- */}
+      {activeHeatmap && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setActiveHeatmap(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-4 w-full max-w-lg shadow-2xl scale-100 animate-in zoom-in-95 duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                {activeHeatmap === 'CURRENT' ? '🔥 Heatmap Hiện Tại' : '❄️ Heatmap Trước Đó'}
+              </h3>
+              <button onClick={() => setActiveHeatmap(null)} className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 text-slate-400">
+                <Check className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Render Large Heatmap */}
+            <div className="grid grid-cols-9 gap-2">
+              {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
+                const data = activeHeatmap === 'CURRENT' ? frequency : prevFrequency;
+                const freq = data[num] || 0;
+                const highlight = activeHeatmap === 'CURRENT' ? processedData[0]?.numbers : [];
+                const isHighlighted = highlight?.includes(num);
+
+                // Recalculate thresholds for this specific dataset
+                const vals = Object.values(data);
+                const max = Math.max(...vals, 1);
+                const min = Math.min(...vals, 0);
+                const range = max - min;
+                const hotThreshold = max - (range / 3);
+                const coldThreshold = min + (range / 3);
+
+                let bgClass = 'bg-slate-800 text-slate-500 border-slate-700';
+                if (freq > 0) {
+                  if (freq >= hotThreshold) {
+                    bgClass = 'bg-red-600 text-white border-red-800 shadow-red-900/50';
+                  } else if (freq <= coldThreshold) {
+                    bgClass = 'bg-blue-600 text-white border-blue-800 shadow-blue-900/50';
+                  } else {
+                    bgClass = 'bg-amber-500 text-black border-amber-700 shadow-amber-900/50';
+                  }
+                }
+
+                return (
+                  <div
+                    key={num}
+                    className={`
+                      relative w-full aspect-square rounded-full flex flex-col items-center justify-center border-[3px]
+                      ${bgClass}
+                      ${isHighlighted ? 'ring-2 ring-white scale-110 z-10 shadow-lg' : ''}
+                    `}
+                  >
+                    <span className="text-sm md:text-lg font-bold leading-none">{num < 10 ? `0${num}` : num}</span>
+                    <span className="text-[10px] md:text-xs font-bold leading-none mt-0.5 opacity-80">{freq}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
