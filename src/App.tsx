@@ -1,4 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { db } from './firebase';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History } from 'lucide-react';
 
@@ -140,8 +142,31 @@ const Mega645AnalyzerV10 = () => {
   const [newDayInput, setNewDayInput] = useState('');
 
   // --- PERSISTENCE ---
+  // --- PERSISTENCE & SYNC ---
+  // 1. Listen for updates from Firebase
+  useEffect(() => {
+    const unsubscribe = onSnapshot(doc(db, "mega645", "data"), (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        // Update state only if different to avoid loops/jitters
+        if (data.rawData !== undefined) {
+          setRawData(prev => prev !== data.rawData ? data.rawData : prev);
+        }
+        if (data.currentDay !== undefined) {
+          setCurrentDay(prev => prev !== data.currentDay ? data.currentDay : prev);
+        }
+        if (data.lockedMatrix !== undefined) {
+          setLockedMatrix(prev => JSON.stringify(prev) !== JSON.stringify(data.lockedMatrix) ? data.lockedMatrix : prev);
+        }
+      }
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Save to Firebase (Debounced)
   useEffect(() => {
     const timer = setTimeout(() => {
+      // Save to LocalStorage (Backup/Fast Load)
       localStorage.setItem('mega645_rawData', rawData);
       localStorage.setItem('mega645_currentDay', currentDay.toString());
       if (lockedMatrix) {
@@ -149,7 +174,15 @@ const Mega645AnalyzerV10 = () => {
       } else {
         localStorage.removeItem('mega645_lockedMatrix');
       }
-    }, 500);
+
+      // Save to Firebase
+      setDoc(doc(db, "mega645", "data"), {
+        rawData,
+        currentDay,
+        lockedMatrix: lockedMatrix || null
+      }, { merge: true }).catch(err => console.error("Firebase save error:", err));
+
+    }, 1000); // 1s debounce
     return () => clearTimeout(timer);
   }, [rawData, currentDay, lockedMatrix]);
 
