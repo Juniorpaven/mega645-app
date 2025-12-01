@@ -754,10 +754,10 @@ const Mega645AnalyzerV10 = () => {
           <HeartPulse className="w-6 h-6 text-red-500" />
           <div>
             <h1 className="text-lg font-bold text-emerald-500 hidden sm:block">
-              Mega 6/45 Pro V10.4
+              Mega 6/45 Pro
             </h1>
             <h1 className="text-base font-bold text-emerald-500 sm:hidden">
-              Mega 6/45
+              Mega 6/45 Pro
             </h1>
             <p className="text-[10px] text-slate-500 font-mono hidden sm:block">Full Screen & Mobile Optimized</p>
           </div>
