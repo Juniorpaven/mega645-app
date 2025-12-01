@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
-import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History } from 'lucide-react';
+import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History, X, BarChart3 } from 'lucide-react';
 
 // --- CONSTANTS & CONFIG ---
 const TOTAL_NUMBERS = 45;
@@ -58,6 +58,15 @@ type TicketStats = {
   score: number;
   status: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'BAD';
   issues: string[];
+};
+
+type NumberInsight = {
+  num: number;
+  lastDate: string;
+  totalFreq: number;
+  currentGap: number;
+  maxStreak: number;
+  type: 'HOT' | 'WARM' | 'COLD';
 };
 
 // --- HELPER: POOL CALCULATION ---
@@ -127,6 +136,7 @@ const Mega645AnalyzerV10 = () => {
   const [prevFrequency, setPrevFrequency] = useState<Record<number, number>>({});
   const [selectedPool, setSelectedPool] = useState<{ num: number, type: string, count: number }[]>([]);
   const [activeHeatmap, setActiveHeatmap] = useState<'CURRENT' | 'PREVIOUS' | null>(null);
+  const [insightNumber, setInsightNumber] = useState<NumberInsight | null>(null);
 
   // Strategy State
   const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
@@ -409,6 +419,60 @@ const Mega645AnalyzerV10 = () => {
     }
     return history;
   }, [rawData]);
+
+
+
+  // --- INSIGHT LOGIC ---
+  const handleNumberClick = (num: number) => {
+    const totalFreq = frequency[num] || 0;
+
+    let lastDate = "Chưa xuất hiện";
+    let currentGap = 0;
+    let found = false;
+
+    for (let i = 0; i < processedData.length; i++) {
+      if (processedData[i].numbers.includes(num)) {
+        if (!found) {
+          lastDate = processedData[i].date;
+          currentGap = i;
+          found = true;
+        }
+      }
+    }
+    if (!found) currentGap = processedData.length;
+
+    let maxStreak = 0;
+    let currentStreak = 0;
+    for (let i = 0; i < processedData.length; i++) {
+      if (processedData[i].numbers.includes(num)) {
+        currentStreak++;
+      } else {
+        if (currentStreak > maxStreak) maxStreak = currentStreak;
+        currentStreak = 0;
+      }
+    }
+    if (currentStreak > maxStreak) maxStreak = currentStreak;
+
+    const vals = Object.values(frequency);
+    const maxVal = Math.max(...vals, 1);
+    const minVal = Math.min(...vals, 0);
+    const range = maxVal - minVal;
+    const hotThreshold = maxVal - (range / 3);
+    const coldThreshold = minVal + (range / 3);
+
+    let type: 'HOT' | 'WARM' | 'COLD' = 'WARM';
+    if (totalFreq >= hotThreshold) type = 'HOT';
+    else if (totalFreq <= coldThreshold) type = 'COLD';
+
+    setInsightNumber({
+      num,
+      lastDate,
+      totalFreq,
+      currentGap,
+      maxStreak,
+      type
+    });
+  };
 
   // --- HANDLERS ---
   const handleLock = () => { setLockedMatrix(generatedMatrix); setCurrentDay(1); };
@@ -884,8 +948,8 @@ const Mega645AnalyzerV10 = () => {
               {/* Pool Grid (Auto Height) */}
               <div className="grid grid-cols-5 gap-1.5 content-start">
                 {selectedPool.map((item, idx) => (
-                  <div key={idx} className={`
-                      relative flex flex-col items-center justify-center rounded shadow-md border-b-2 transition-transform hover:scale-105 cursor-default group
+                  <div key={idx} onClick={() => handleNumberClick(item.num)} className={`
+                      relative flex flex-col items-center justify-center rounded shadow-md border-b-2 transition-transform hover:scale-105 cursor-pointer group
                       ${item.type === 'HOT' ? 'bg-gradient-to-br from-red-600 to-red-700 border-red-900' :
                       item.type === 'COLD' ? 'bg-gradient-to-br from-blue-600 to-blue-700 border-blue-900' :
                         'bg-gradient-to-br from-amber-500 to-amber-600 border-amber-800'
@@ -1030,6 +1094,45 @@ const Mega645AnalyzerV10 = () => {
                   </div>
                 );
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- MODAL: NUMBER INSIGHT --- */}
+      {insightNumber && (
+        <div className="fixed inset-0 z-[100] bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setInsightNumber(null)}>
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-6 w-full max-w-sm shadow-2xl scale-100 animate-in zoom-in-95 duration-200 relative" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setInsightNumber(null)} className="absolute top-3 right-3 text-slate-500 hover:text-white"><X className="w-5 h-5" /></button>
+
+            <div className="flex flex-col items-center mb-6">
+              <div className={`w-20 h-20 rounded-2xl flex items-center justify-center text-4xl font-black text-white mb-3 shadow-lg border-b-4 ${insightNumber.type === 'HOT' ? 'bg-red-600 border-red-800' : insightNumber.type === 'COLD' ? 'bg-blue-600 border-blue-800' : 'bg-amber-500 border-amber-700'}`}>
+                {insightNumber.num < 10 ? `0${insightNumber.num}` : insightNumber.num}
+              </div>
+              <h3 className={`text-lg font-bold uppercase tracking-wider ${insightNumber.type === 'HOT' ? 'text-red-500' : insightNumber.type === 'COLD' ? 'text-blue-500' : 'text-amber-500'}`}>
+                {insightNumber.type === 'HOT' ? 'RẤT HOT 🔥' : insightNumber.type === 'COLD' ? 'ĐANG LẠNH ❄️' : 'TRUNG BÌNH ⚡'}
+              </h3>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-slate-800">
+                <span className="text-slate-400 text-sm flex items-center gap-2"><Calendar className="w-4 h-4" /> Gần nhất</span>
+                <span className="text-white font-mono font-bold">{insightNumber.lastDate}</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-slate-800">
+                <span className="text-slate-400 text-sm flex items-center gap-2"><Activity className="w-4 h-4" /> Tổng xuất hiện</span>
+                <span className="text-white font-mono font-bold">{insightNumber.totalFreq} lần / 30 kỳ</span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-slate-800">
+                <span className="text-slate-400 text-sm flex items-center gap-2"><History className="w-4 h-4" /> Gan hiện tại</span>
+                <span className={`font-mono font-bold ${insightNumber.currentGap > 5 ? 'text-red-400' : 'text-emerald-400'}`}>
+                  {insightNumber.currentGap === 0 ? 'Vừa ra' : `${insightNumber.currentGap} kỳ chưa ra`}
+                </span>
+              </div>
+              <div className="flex justify-between items-center p-3 bg-slate-950 rounded border border-slate-800">
+                <span className="text-slate-400 text-sm flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Streak dài nhất</span>
+                <span className="text-yellow-400 font-mono font-bold">{insightNumber.maxStreak} kỳ liên tiếp</span>
+              </div>
             </div>
           </div>
         </div>
