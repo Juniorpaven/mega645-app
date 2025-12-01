@@ -619,7 +619,7 @@ const Mega645AnalyzerV10 = () => {
     );
   };
 
-  const TicketRowV10 = ({ stats, index, isLocked, lockedSet }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number> }) => {
+  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, onClickNumber }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, onClickNumber?: (n: number) => void }) => {
     const isBad = stats.status === 'BAD';
     const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
@@ -667,7 +667,7 @@ const Mega645AnalyzerV10 = () => {
               }
 
               return (
-                <span key={i} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base ${colorClass}`}>
+                <span key={i} onClick={() => onClickNumber && onClickNumber(n)} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base cursor-pointer hover:scale-110 transition-transform ${colorClass}`}>
                   {n < 10 ? `0${n}` : n}
                   {isDouble && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
                 </span>
@@ -753,10 +753,13 @@ const Mega645AnalyzerV10 = () => {
         <div className="flex items-center gap-3">
           <HeartPulse className="w-6 h-6 text-red-500" />
           <div>
-            <h1 className="text-lg font-bold text-emerald-500">
+            <h1 className="text-lg font-bold text-emerald-500 hidden sm:block">
               Mega 6/45 Pro V10.4
             </h1>
-            <p className="text-[10px] text-slate-500 font-mono">Full Screen & Mobile Optimized</p>
+            <h1 className="text-base font-bold text-emerald-500 sm:hidden">
+              Mega 6/45
+            </h1>
+            <p className="text-[10px] text-slate-500 font-mono hidden sm:block">Full Screen & Mobile Optimized</p>
           </div>
         </div>
 
@@ -768,7 +771,7 @@ const Mega645AnalyzerV10 = () => {
               <div className="flex items-center gap-1">
                 <button
                   onClick={handleNextDay}
-                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded shadow-lg border border-blue-500 transition-all font-bold text-xs uppercase animate-pulse"
+                  className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded shadow-lg border border-blue-500 transition-all font-bold text-xs uppercase animate-pulse"
                   title="Hoàn thành kỳ hiện tại và chuyển sang ngày tiếp theo"
                 >
                   <Calendar className="w-3.5 h-3.5" />
@@ -786,10 +789,11 @@ const Mega645AnalyzerV10 = () => {
             ) : (
               <button
                 onClick={handleLock}
-                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-emerald-500 transition-all font-bold text-xs uppercase"
+                className="flex items-center gap-2 px-2 md:px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-emerald-500 transition-all font-bold text-xs uppercase"
               >
                 <Lock className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Khóa & Tạo Chiến Dịch</span>
+                <span className="sm:hidden">Khóa</span>
               </button>
             )}
 
@@ -1009,7 +1013,7 @@ const Mega645AnalyzerV10 = () => {
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {lockedMatrix ? (
                   lockedMatrix.map((stats, idx) => (
-                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} />
+                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} onClickNumber={handleNumberClick} />
                   ))
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
@@ -1030,7 +1034,7 @@ const Mega645AnalyzerV10 = () => {
               </div>
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {generatedMatrix.map((stats, idx) => (
-                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} />
+                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} />
                 ))}
               </div>
             </div>
