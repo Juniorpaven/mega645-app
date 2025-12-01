@@ -863,10 +863,10 @@ const Mega645AnalyzerV10 = () => {
         {/* --- RIGHT PANEL: MATRIX RỘNG MỞ --- */}
         <section className="flex-1 flex flex-col bg-slate-950 relative h-auto md:h-full overflow-hidden">
 
-          {/* Top Area: Pool & History (Compact) */}
-          <div className="flex-none h-auto md:h-[30%] max-h-[300px] min-h-[220px] flex flex-col md:flex-row border-b border-slate-800 bg-slate-900/10">
+          {/* Top Area: Pool & History (Auto-Height) */}
+          <div className="flex-none h-auto flex flex-col md:flex-row border-b border-slate-800 bg-slate-900/10">
 
-            {/* LEFT: POOL 10 (Compact - ~30%) */}
+            {/* LEFT: POOL 10 (Compact - ~35%) */}
             <div className="w-full md:w-[35%] max-w-[450px] p-3 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-slate-800">
               {/* Header + Legend */}
               <div className="flex justify-between items-center flex-none">
@@ -881,8 +881,8 @@ const Mega645AnalyzerV10 = () => {
                 </div>
               </div>
 
-              {/* Pool Grid (Smaller) */}
-              <div className="flex-1 grid grid-cols-5 gap-1.5 content-start overflow-y-auto">
+              {/* Pool Grid (Auto Height) */}
+              <div className="grid grid-cols-5 gap-1.5 content-start">
                 {selectedPool.map((item, idx) => (
                   <div key={idx} className={`
                       relative flex flex-col items-center justify-center rounded shadow-md border-b-2 transition-transform hover:scale-105 cursor-default group
@@ -900,34 +900,32 @@ const Mega645AnalyzerV10 = () => {
               </div>
             </div>
 
-            {/* RIGHT: HISTORY (Expanded - ~70%) */}
-            <div className="flex-1 bg-slate-900/30 p-3 flex flex-col gap-2 overflow-hidden">
+            {/* RIGHT: HISTORY (Expanded - Auto Height) */}
+            <div className="flex-1 bg-slate-900/30 p-3 flex flex-col gap-2">
               <h3 className="text-xs font-bold text-slate-500 uppercase flex-none flex items-center gap-2">
                 <History className="w-3.5 h-3.5" /> Lịch sử 7 kỳ gần nhất
               </h3>
-              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-2">
-                  {poolHistory.map((hist, idx) => (
-                    <div key={idx} className="flex items-center gap-3 text-sm bg-slate-950/80 p-2 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
-                      <div className="w-20 flex-none text-slate-500 font-mono text-[10px] md:text-xs text-right leading-tight border-r border-slate-800 pr-2">
-                        {hist.date}
-                      </div>
-                      <div className="flex-1 flex gap-1.5 flex-wrap">
-                        {hist.pool.map((item, i) => {
-                          let colorClass = 'text-slate-500';
-                          if (item.type === 'HOT') colorClass = 'text-red-400';
-                          if (item.type === 'WARM') colorClass = 'text-amber-400';
-                          if (item.type === 'COLD') colorClass = 'text-blue-400';
-                          return (
-                            <span key={i} className={`font-bold font-mono ${colorClass}`}>
-                              {item.num < 10 ? `0${item.num}` : item.num}
-                            </span>
-                          );
-                        })}
-                      </div>
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-2">
+                {poolHistory.map((hist, idx) => (
+                  <div key={idx} className="flex items-center gap-3 text-sm bg-slate-950/80 p-2 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
+                    <div className="w-20 flex-none text-slate-500 font-mono text-[10px] md:text-xs text-right leading-tight border-r border-slate-800 pr-2">
+                      {hist.date}
                     </div>
-                  ))}
-                </div>
+                    <div className="flex-1 flex gap-1.5 flex-wrap">
+                      {hist.pool.map((item, i) => {
+                        let colorClass = 'text-slate-500';
+                        if (item.type === 'HOT') colorClass = 'text-red-400';
+                        if (item.type === 'WARM') colorClass = 'text-amber-400';
+                        if (item.type === 'COLD') colorClass = 'text-blue-400';
+                        return (
+                          <span key={i} className={`font-bold font-mono ${colorClass}`}>
+                            {item.num < 10 ? `0${item.num}` : item.num}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
