@@ -866,66 +866,68 @@ const Mega645AnalyzerV10 = () => {
           {/* Top Area: Pool & History (Compact) */}
           <div className="flex-none h-auto md:h-[30%] max-h-[300px] min-h-[220px] flex flex-col md:flex-row border-b border-slate-800 bg-slate-900/10">
 
-            {/* LEFT: POOL 10 (Expanded) */}
-            <div className="flex-1 p-4 flex flex-col gap-3 overflow-hidden">
+            {/* LEFT: POOL 10 (Compact - ~30%) */}
+            <div className="w-full md:w-[35%] max-w-[450px] p-3 flex flex-col gap-2 border-b md:border-b-0 md:border-r border-slate-800">
               {/* Header + Legend */}
               <div className="flex justify-between items-center flex-none">
-                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                  POOL 10 SỐ TỐI ƯU
-                  <span className="hidden lg:inline text-[10px] font-normal text-slate-500 normal-case">(Tự động đề xuất theo tần suất)</span>
+                <h2 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  POOL 10
+                  <span className="text-[9px] font-normal text-slate-500 normal-case">(Tối ưu)</span>
                 </h2>
-                <div className="flex gap-3 text-[9px] font-bold bg-slate-900/80 px-2 py-1 rounded border border-slate-800 shadow-sm">
-                  <span className="flex items-center gap-1 text-red-500"><Flame className="w-3 h-3" /> HOT</span>
-                  <span className="flex items-center gap-1 text-amber-500"><Zap className="w-3 h-3" /> WARM</span>
-                  <span className="flex items-center gap-1 text-blue-500"><Snowflake className="w-3 h-3" /> COLD</span>
+                <div className="flex gap-2 text-[8px] font-bold bg-slate-900/80 px-1.5 py-0.5 rounded border border-slate-800 shadow-sm">
+                  <span className="flex items-center gap-1 text-red-500"><Flame className="w-2.5 h-2.5" /> HOT</span>
+                  <span className="flex items-center gap-1 text-amber-500"><Zap className="w-2.5 h-2.5" /> WARM</span>
+                  <span className="flex items-center gap-1 text-blue-500"><Snowflake className="w-2.5 h-2.5" /> COLD</span>
                 </div>
               </div>
 
-              {/* Pool Grid */}
-              <div className="flex-1 grid grid-cols-5 gap-2 md:gap-3 content-start overflow-y-auto pr-1 pb-1">
+              {/* Pool Grid (Smaller) */}
+              <div className="flex-1 grid grid-cols-5 gap-1.5 content-start overflow-y-auto">
                 {selectedPool.map((item, idx) => (
                   <div key={idx} className={`
-                      relative flex flex-col items-center justify-center rounded-lg shadow-lg border-b-4 transition-transform hover:scale-105 cursor-default group
+                      relative flex flex-col items-center justify-center rounded shadow-md border-b-2 transition-transform hover:scale-105 cursor-default group
                       ${item.type === 'HOT' ? 'bg-gradient-to-br from-red-600 to-red-700 border-red-900' :
                       item.type === 'COLD' ? 'bg-gradient-to-br from-blue-600 to-blue-700 border-blue-900' :
                         'bg-gradient-to-br from-amber-500 to-amber-600 border-amber-800'
                     }
                     `}
-                    style={{ minHeight: '60px' }}
+                    style={{ height: '45px' }}
                   >
-                    <span className="text-2xl md:text-4xl font-black text-white drop-shadow-md tracking-tighter">{item.num < 10 ? `0${item.num}` : item.num}</span>
-                    <span className="absolute top-1 right-1 text-[8px] font-bold text-white/80 bg-black/20 px-1 rounded">{item.count}</span>
+                    <span className="text-lg font-black text-white drop-shadow-md tracking-tighter">{item.num < 10 ? `0${item.num}` : item.num}</span>
+                    <span className="absolute top-0.5 right-0.5 text-[10px] font-bold text-white bg-black/40 px-1 rounded shadow-sm">{item.count}</span>
                   </div>
                 ))}
               </div>
             </div>
 
-            {/* RIGHT: HISTORY (Compact Side Panel) */}
-            <div className="w-full md:w-[280px] lg:w-[320px] border-t md:border-t-0 md:border-l border-slate-800 bg-slate-900/30 p-3 flex flex-col gap-2 overflow-hidden">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase flex-none flex items-center gap-2">
-                <History className="w-3 h-3" /> Lịch sử 7 kỳ gần nhất
+            {/* RIGHT: HISTORY (Expanded - ~70%) */}
+            <div className="flex-1 bg-slate-900/30 p-3 flex flex-col gap-2 overflow-hidden">
+              <h3 className="text-xs font-bold text-slate-500 uppercase flex-none flex items-center gap-2">
+                <History className="w-3.5 h-3.5" /> Lịch sử 7 kỳ gần nhất
               </h3>
-              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
-                {poolHistory.map((hist, idx) => (
-                  <div key={idx} className="flex items-center gap-2 text-xs bg-slate-950/80 p-1.5 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
-                    <div className="w-14 flex-none text-slate-600 font-mono text-[9px] text-right leading-tight">
-                      {hist.date}
+              <div className="flex-1 overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-2">
+                  {poolHistory.map((hist, idx) => (
+                    <div key={idx} className="flex items-center gap-3 text-sm bg-slate-950/80 p-2 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
+                      <div className="w-20 flex-none text-slate-500 font-mono text-[10px] md:text-xs text-right leading-tight border-r border-slate-800 pr-2">
+                        {hist.date}
+                      </div>
+                      <div className="flex-1 flex gap-1.5 flex-wrap">
+                        {hist.pool.map((item, i) => {
+                          let colorClass = 'text-slate-500';
+                          if (item.type === 'HOT') colorClass = 'text-red-400';
+                          if (item.type === 'WARM') colorClass = 'text-amber-400';
+                          if (item.type === 'COLD') colorClass = 'text-blue-400';
+                          return (
+                            <span key={i} className={`font-bold font-mono ${colorClass}`}>
+                              {item.num < 10 ? `0${item.num}` : item.num}
+                            </span>
+                          );
+                        })}
+                      </div>
                     </div>
-                    <div className="flex-1 flex gap-1 flex-wrap justify-end">
-                      {hist.pool.map((item, i) => {
-                        let colorClass = 'text-slate-500';
-                        if (item.type === 'HOT') colorClass = 'text-red-400';
-                        if (item.type === 'WARM') colorClass = 'text-amber-400';
-                        if (item.type === 'COLD') colorClass = 'text-blue-400';
-                        return (
-                          <span key={i} className={`font-bold text-[9px] ${colorClass}`}>
-                            {item.num < 10 ? `0${item.num}` : item.num}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
