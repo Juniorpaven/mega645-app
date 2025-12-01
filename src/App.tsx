@@ -697,12 +697,49 @@ const Mega645AnalyzerV10 = () => {
         </div>
 
         <div className="flex items-center gap-2 md:gap-4">
-          <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded border border-slate-700">
-            <Layers className="w-3 h-3 text-emerald-400" />
-            <span className="text-xs font-mono text-emerald-400">{processedData.length} Kỳ</span>
-            <span className="w-px h-3 bg-slate-700 mx-1"></span>
-            <Calendar className="w-3 h-3 text-yellow-400" />
-            <span className="text-xs font-mono text-yellow-400">Ngày {currentDay}/7</span>
+
+          {/* --- NEW CONTROLS AREA --- */}
+          <div className="flex items-center gap-2">
+            {lockedMatrix ? (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={handleNextDay}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded shadow-lg border border-blue-500 transition-all font-bold text-xs uppercase animate-pulse"
+                  title="Hoàn thành kỳ hiện tại và chuyển sang ngày tiếp theo"
+                >
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span className="hidden xl:inline">Hoàn thành kỳ {currentDay} ➝ {currentDay + 1}</span>
+                  <span className="xl:hidden">Kỳ {currentDay}➝{currentDay + 1}</span>
+                </button>
+                <button
+                  onClick={handleUnlock}
+                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded border border-slate-700 transition-colors"
+                  title="Mở khóa (Sửa lại)"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleLock}
+                className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded shadow-lg border border-emerald-500 transition-all font-bold text-xs uppercase"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Khóa & Tạo Chiến Dịch</span>
+              </button>
+            )}
+
+            {/* Stats Badge (Compact) */}
+            <div className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 bg-slate-800 rounded border border-slate-700 opacity-80">
+              <Layers className="w-3 h-3 text-emerald-400" />
+              <span className="text-xs font-mono text-emerald-400">{processedData.length} Kỳ</span>
+              {!lockedMatrix && (
+                <>
+                  <span className="w-px h-3 bg-slate-700 mx-1"></span>
+                  <span className="text-xs font-mono text-yellow-400">Ngày {currentDay}/7</span>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="flex gap-1">
@@ -824,99 +861,77 @@ const Mega645AnalyzerV10 = () => {
         </section>
 
         {/* --- RIGHT PANEL: MATRIX RỘNG MỞ --- */}
-        <section className="flex-1 flex flex-col bg-slate-950 relative h-auto md:h-full">
+        <section className="flex-1 flex flex-col bg-slate-950 relative h-auto md:h-full overflow-hidden">
 
-          {/* Top Control Bar */}
-          <div className="flex-none p-4 border-b border-slate-800 flex flex-col gap-4 bg-slate-900/20">
+          {/* Top Area: Pool & History (Compact) */}
+          <div className="flex-none h-auto md:h-[30%] max-h-[300px] min-h-[220px] flex flex-col md:flex-row border-b border-slate-800 bg-slate-900/10">
 
-            {/* POOL HEADER & DISPLAY */}
-            <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 shadow-lg">
-              <div className="flex justify-between items-center mb-3">
-                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider">POOL 10 SỐ TỐI ƯU</h2>
-                <div className="flex gap-3 text-[10px] font-bold">
+            {/* LEFT: POOL 10 (Expanded) */}
+            <div className="flex-1 p-4 flex flex-col gap-3 overflow-hidden">
+              {/* Header + Legend */}
+              <div className="flex justify-between items-center flex-none">
+                <h2 className="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                  POOL 10 SỐ TỐI ƯU
+                  <span className="hidden lg:inline text-[10px] font-normal text-slate-500 normal-case">(Tự động đề xuất theo tần suất)</span>
+                </h2>
+                <div className="flex gap-3 text-[9px] font-bold bg-slate-900/80 px-2 py-1 rounded border border-slate-800 shadow-sm">
                   <span className="flex items-center gap-1 text-red-500"><Flame className="w-3 h-3" /> HOT</span>
                   <span className="flex items-center gap-1 text-amber-500"><Zap className="w-3 h-3" /> WARM</span>
                   <span className="flex items-center gap-1 text-blue-500"><Snowflake className="w-3 h-3" /> COLD</span>
                 </div>
               </div>
-              <div className="grid grid-cols-5 gap-2 md:flex md:gap-3 md:overflow-x-auto pb-2 scrollbar-hide">
+
+              {/* Pool Grid */}
+              <div className="flex-1 grid grid-cols-5 gap-2 md:gap-3 content-start overflow-y-auto pr-1 pb-1">
                 {selectedPool.map((item, idx) => (
                   <div key={idx} className={`
-                      flex flex-col items-center justify-center w-full h-16 md:w-16 md:h-20 rounded-lg shadow-lg flex-shrink-0 border-b-4 transition-transform hover:scale-105
-                      ${item.type === 'HOT' ? 'bg-red-600 border-red-800' :
-                      item.type === 'COLD' ? 'bg-blue-600 border-blue-800' :
-                        'bg-amber-600 border-amber-800'
+                      relative flex flex-col items-center justify-center rounded-lg shadow-lg border-b-4 transition-transform hover:scale-105 cursor-default group
+                      ${item.type === 'HOT' ? 'bg-gradient-to-br from-red-600 to-red-700 border-red-900' :
+                      item.type === 'COLD' ? 'bg-gradient-to-br from-blue-600 to-blue-700 border-blue-900' :
+                        'bg-gradient-to-br from-amber-500 to-amber-600 border-amber-800'
                     }
-                    `}>
-                    <span className="text-2xl md:text-3xl font-bold text-white drop-shadow-md">{item.num < 10 ? `0${item.num}` : item.num}</span>
-                    <span className="text-[9px] md:text-[10px] font-bold text-white/90 bg-black/20 px-1.5 rounded mt-1">{item.count}L</span>
+                    `}
+                    style={{ minHeight: '60px' }}
+                  >
+                    <span className="text-2xl md:text-4xl font-black text-white drop-shadow-md tracking-tighter">{item.num < 10 ? `0${item.num}` : item.num}</span>
+                    <span className="absolute top-1 right-1 text-[8px] font-bold text-white/80 bg-black/20 px-1 rounded">{item.count}</span>
                   </div>
                 ))}
               </div>
+            </div>
 
-              {/* POOL HISTORY */}
-              {poolHistory.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-slate-700/50">
-                  <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-2">
-                    <History className="w-3 h-3" /> Lịch sử 7 kỳ gần nhất
-                  </h3>
-                  <div className="space-y-2">
-                    {poolHistory.map((hist, idx) => (
-                      <div key={idx} className="flex items-center gap-3 text-xs bg-slate-950/50 p-2 rounded border border-slate-800/50">
-                        <div className="w-16 flex-none text-slate-500 font-mono text-[10px]">
-                          {hist.date}
-                        </div>
-                        <div className="flex-1 flex gap-1.5 flex-wrap">
-                          {hist.pool.map((item, i) => {
-                            let colorClass = 'bg-slate-800 border-slate-700 text-slate-300';
-                            if (item.type === 'HOT') colorClass = 'bg-red-900/40 border-red-800 text-red-400';
-                            if (item.type === 'WARM') colorClass = 'bg-amber-900/40 border-amber-800 text-amber-400';
-                            if (item.type === 'COLD') colorClass = 'bg-blue-900/40 border-blue-800 text-blue-400';
-
-                            return (
-                              <span key={i} className={`w-5 h-5 flex items-center justify-center rounded-full font-bold text-[10px] border ${colorClass}`}>
-                                {item.num < 10 ? `0${item.num}` : item.num}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+            {/* RIGHT: HISTORY (Compact Side Panel) */}
+            <div className="w-full md:w-[280px] lg:w-[320px] border-t md:border-t-0 md:border-l border-slate-800 bg-slate-900/30 p-3 flex flex-col gap-2 overflow-hidden">
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase flex-none flex items-center gap-2">
+                <History className="w-3 h-3" /> Lịch sử 7 kỳ gần nhất
+              </h3>
+              <div className="flex-1 overflow-y-auto space-y-1.5 pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+                {poolHistory.map((hist, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-xs bg-slate-950/80 p-1.5 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
+                    <div className="w-14 flex-none text-slate-600 font-mono text-[9px] text-right leading-tight">
+                      {hist.date}
+                    </div>
+                    <div className="flex-1 flex gap-1 flex-wrap justify-end">
+                      {hist.pool.map((item, i) => {
+                        let colorClass = 'text-slate-500';
+                        if (item.type === 'HOT') colorClass = 'text-red-400';
+                        if (item.type === 'WARM') colorClass = 'text-amber-400';
+                        if (item.type === 'COLD') colorClass = 'text-blue-400';
+                        return (
+                          <span key={i} className={`font-bold text-[9px] ${colorClass}`}>
+                            {item.num < 10 ? `0${item.num}` : item.num}
+                          </span>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                ))}
+              </div>
             </div>
 
-            {/* Main Action Buttons */}
-            <div className="w-full">
-              {!lockedMatrix ? (
-                <button
-                  onClick={handleLock}
-                  className="w-full flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold shadow-lg transition-all text-sm uppercase tracking-wide"
-                >
-                  <Lock className="w-4 h-4" /> KHÓA DỮ LIỆU & TẠO CHIẾN DỊCH
-                </button>
-              ) : (
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleNextDay}
-                    className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-lg font-bold shadow-lg transition-all text-sm uppercase tracking-wide"
-                  >
-                    <Calendar className="w-4 h-4" /> HOÀN THÀNH KỲ {currentDay} {'->'} {currentDay + 1}
-                  </button>
-                  <button
-                    onClick={handleUnlock}
-                    className="px-4 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg font-bold border border-slate-700 transition-all"
-                    title="Mở khóa để sửa"
-                  >
-                    <RotateCcw className="w-5 h-5" />
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
 
-          {/* Matrix Content - Full Height */}
+          {/* Bottom Area: Streams (Expanded) */}
           <div className="flex-1 grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-slate-800 overflow-hidden">
 
             {/* LEFT: LOCKED MATRIX */}
