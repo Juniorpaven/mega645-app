@@ -139,6 +139,8 @@ const Mega645AnalyzerV10 = () => {
   const [insightNumber, setInsightNumber] = useState<NumberInsight | null>(null);
 
   // Strategy State
+  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED'>('BALANCED'); // Default to new strategy or WHEEL? Let's default to WHEEL or stick to user context. User asked to 'supplement', let's default to BALANCED to show it off? Or WHEEL. Let's keep WHEEL default but I'll set it to BALANCED for the user to see. Actually, let's set to 'BALANCED' as the user wants to test it.
+  const [balancedMatrix, setBalancedMatrix] = useState<TicketStats[]>([]);
   const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
   const [generatedMatrix, setGeneratedMatrix] = useState<TicketStats[]>([]);
   const [lockedMatrix, setLockedMatrix] = useState<TicketStats[] | null>(() => {
@@ -404,6 +406,153 @@ const Mega645AnalyzerV10 = () => {
     setGeneratedMatrix(analyzedMatrix);
 
   }, [frequency]);
+
+  // --- ENGINE: BALANCED STRATEGY ---
+  useEffect(() => {
+    if (Object.keys(frequency).length === 0) return;
+    if (strategyMode !== 'BALANCED') return;
+
+    const generateBalancedSets = () => {
+      const results: TicketStats[] = [];
+      const HEAD_4_POOL = [41, 42, 43, 45];
+      const TAIL_3_8_PRIORITY = [28, 23, 13, 18];
+      const TAIL_3_8_POOL = [3, 13, 23, 33, 8, 18, 28, 38]; // Note: 33, 43 also tail 3. 43 is in Head pool.
+      const FILLERS_PRIORITY = [2, 9, 10, 14, 17];
+      const FILLERS_POOL = Array.from({ length: 19 }, (_, i) => i + 1); // 01-19
+
+      const isValid = (nums: number[]) => {
+        if (new Set(nums).size !== 6) return false;
+        const sum = nums.reduce((a, b) => a + b, 0);
+        if (sum < 130 || sum > 170) return false;
+
+        const evens = nums.filter(n => n % 2 === 0).length;
+        // 3 Even - 3 Odd OR 4 Even - 2 Odd
+        if (evens !== 3 && evens !== 4) return false;
+
+        // 3 Small (01-22) - 3 Large (23-45)
+        const smalls = nums.filter(n => n <= 22).length;
+        if (smalls !== 3) return false;
+
+        // Sequence: At least 1 pair, NO 3 consecutive
+        const sorted = [...nums].sort((a, b) => a - b);
+        let hasAdj = false;
+        let streak = 1;
+        for (let i = 0; i < 5; i++) {
+          if (sorted[i + 1] === sorted[i] + 1) {
+            streak++;
+            hasAdj = true;
+          } else {
+            streak = 1;
+          }
+          if (streak >= 3) return false;
+        }
+        if (!hasAdj) return false;
+
+        return true;
+      };
+
+      let attempts = 0;
+      const uniqueStrings = new Set<string>();
+
+      while (results.length < 15 && attempts < 20000) { // Gen up to 15 suggestions
+        attempts++;
+        let current: number[] = [];
+
+        // STEP 1: HEAD 4 (2 Numbers)
+        // Explicit logic from user: Priority 42-43 or 41-45
+        if (Math.random() < 0.4) {
+          current.push(42, 43);
+        } else if (Math.random() < 0.4) {
+          current.push(41, 45);
+        } else {
+          // Pick random 2 from pool
+          const shuffled = [...HEAD_4_POOL].sort(() => Math.random() - 0.5);
+          current.push(shuffled[0], shuffled[1]);
+        }
+
+        // STEP 2: TAIL 3 or 8 (1-2 Numbers)
+        // Priority: 28, 23, 13, 18
+        const numsToAddStep2 = Math.random() < 0.7 ? 1 : 2;
+        let step2Candidates = [...TAIL_3_8_PRIORITY];
+        if (Math.random() > 0.7) step2Candidates = [...TAIL_3_8_POOL];
+
+        // Filter out existing
+        step2Candidates = step2Candidates.filter(n => !current.includes(n));
+        step2Candidates.sort(() => Math.random() - 0.5);
+
+        for (let i = 0; i < numsToAddStep2; i++) {
+          if (step2Candidates[i]) current.push(step2Candidates[i]);
+        }
+
+        // STEP 3: ADJACENT PAIR (If not present)
+        // Check if we already have adjacent
+        current.sort((a, b) => a - b);
+        let hasAdj = false;
+        for (let i = 0; i < current.length - 1; i++) {
+          if (current[i + 1] === current[i] + 1) hasAdj = true;
+        }
+
+        if (!hasAdj) {
+          // Need to add an adjacent to one of existing
+          // Pick a random existing number and try -1 or +1
+          const base = current[Math.floor(Math.random() * current.length)];
+          const opt1 = base + 1;
+          const opt2 = base - 1;
+          // Must be in 1-45
+          const opts = [];
+          if (opt1 <= 45 && !current.includes(opt1)) opts.push(opt1);
+          if (opt2 >= 1 && !current.includes(opt2)) opts.push(opt2);
+
+          if (opts.length > 0) {
+            current.push(opts[Math.floor(Math.random() * opts.length)]);
+          }
+        }
+
+        // STEP 4: FILLERS
+        // Fill until 6
+        if (current.length > 6) {
+          // Truncate random? or retry.
+          // If >6, let's just keep first 6 (unlikely if strictly following steps but possible if step 2 added 2 and step 3 added 1 and we started with 2 -> 5 nums. wait 2+2+1 = 5. So usually <6).
+          // Actually: Step 1 (2) + Step 2 (1-2) + Step 3 (0-1) -> Max 5. So we always need fillers.
+          current = current.slice(0, 6);
+        }
+
+        const remainingCount = 6 - current.length;
+        if (remainingCount > 0) {
+          // Mix priority fillers and general fillers
+          let fillers = [...FILLERS_POOL].filter(n => !current.includes(n));
+
+          // Weighted sort: Priority ones first slightly more often?
+          fillers.sort((a, b) => {
+            const aP = FILLERS_PRIORITY.includes(a);
+            const bP = FILLERS_PRIORITY.includes(b);
+            if (aP && !bP) return -1;
+            if (!aP && bP) return 1;
+            return Math.random() - 0.5;
+          });
+
+          for (let i = 0; i < remainingCount; i++) {
+            if (fillers[i]) current.push(fillers[i]);
+          }
+        }
+
+        if (isValid(current)) {
+          const signature = current.sort((a, b) => a - b).join('-');
+          if (!uniqueStrings.has(signature)) {
+            uniqueStrings.add(signature);
+            results.push(calculateTicketHealth(current));
+          }
+        }
+      }
+
+      // Sort by Score
+      results.sort((a, b) => b.score - a.score);
+      setBalancedMatrix(results);
+    };
+
+    generateBalancedSets();
+
+  }, [frequency, strategyMode]); // Re-run when mode changes to BALANCED or data updates
 
   // --- POOL HISTORY ---
   const poolHistory = useMemo(() => {
@@ -1032,8 +1181,25 @@ const Mega645AnalyzerV10 = () => {
                 </h3>
                 <span className="text-[9px] bg-amber-900/50 text-amber-300 px-2 py-0.5 rounded border border-amber-800 font-bold">AUTO-UPDATE</span>
               </div>
+
+              {/* STRATEGY TOGGLE */}
+              <div className="flex bg-slate-900 border-b border-slate-800 p-1 gap-1">
+                <button
+                  onClick={() => setStrategyMode('WHEEL')}
+                  className={`flex-1 py-1.5 text-[10px] uppercase font-bold rounded transition-all ${strategyMode === 'WHEEL' ? 'bg-amber-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  Standard Wheel
+                </button>
+                <button
+                  onClick={() => setStrategyMode('BALANCED')}
+                  className={`flex-1 py-1.5 text-[10px] uppercase font-bold rounded transition-all ${strategyMode === 'BALANCED' ? 'bg-purple-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  Ma Trận Cân Bằng (Mới)
+                </button>
+              </div>
+
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
-                {generatedMatrix.map((stats, idx) => (
+                {(strategyMode === 'WHEEL' ? generatedMatrix : balancedMatrix).map((stats, idx) => (
                   <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} />
                 ))}
               </div>
