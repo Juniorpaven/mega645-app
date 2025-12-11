@@ -380,10 +380,11 @@ const Mega645AnalyzerV10 = () => {
       return a.num - b.num;
     });
 
-    const hot = freqArray.slice(0, 3).map(i => i.num);
+    // Modified Strategy: 4 HOT, 4 WARM, 2 COLD
+    const hot = freqArray.slice(0, 4).map(i => i.num);
     const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
     const warm = freqArray.slice(midStart, midStart + 4).map(i => i.num);
-    const cold = freqArray.slice(Math.max(0, freqArray.length - 3)).map(i => i.num);
+    const cold = freqArray.slice(Math.max(0, freqArray.length - 2)).map(i => i.num);
 
     let poolIndices = Array.from(new Set([...hot, ...warm, ...cold]));
     let ptr = 0;
