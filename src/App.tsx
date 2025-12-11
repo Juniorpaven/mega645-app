@@ -105,10 +105,11 @@ const getPoolForData = (lines: string[]) => {
     return a.num - b.num;
   });
 
-  const hot = freqArray.slice(0, 3).map(i => i.num);
+  // Modified Strategy: 4 HOT, 4 WARM, 2 COLD
+  const hot = freqArray.slice(0, 4).map(i => i.num);
   const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
   const warm = freqArray.slice(midStart, midStart + 4).map(i => i.num);
-  const cold = freqArray.slice(Math.max(0, freqArray.length - 3)).map(i => i.num);
+  const cold = freqArray.slice(Math.max(0, freqArray.length - 2)).map(i => i.num);
 
   let poolIndices = Array.from(new Set([...hot, ...warm, ...cold]));
   let ptr = 0;
@@ -569,6 +570,14 @@ const Mega645AnalyzerV10 = () => {
     return history;
   }, [rawData]);
 
+  // --- LATEST RESULT ANALYSIS ---
+  const latestResultStats = useMemo(() => {
+    if (processedData.length > 0) {
+      return calculateTicketHealth(processedData[0].numbers);
+    }
+    return null;
+  }, [processedData]);
+
 
 
   // --- INSIGHT LOGIC ---
@@ -768,7 +777,7 @@ const Mega645AnalyzerV10 = () => {
     );
   };
 
-  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, onClickNumber }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, onClickNumber?: (n: number) => void }) => {
+  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, onClickNumber, latestResult = [] }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, onClickNumber?: (n: number) => void, latestResult?: number[] }) => {
     const isBad = stats.status === 'BAD';
     const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
 
@@ -801,22 +810,53 @@ const Mega645AnalyzerV10 = () => {
 
               // LIVE MATRIX: Gold Border Style (No Hot/Cold Colors)
               // LOCKED MATRIX: Green Tint
-              let colorClass = 'bg-slate-800 text-slate-200 border border-slate-700';
+              let bgClass = 'bg-slate-800';
+              let textClass = 'text-slate-200';
+              let borderClass = 'border-slate-700';
+              let shadowClass = '';
+              let ringClass = '';
+              let scaleClass = '';
+              let zIndexClass = '';
 
               if (isLocked) {
-                colorClass = 'bg-emerald-900/20 text-emerald-100 border border-emerald-800/50';
+                bgClass = 'bg-emerald-900/20';
+                textClass = 'text-emerald-100';
+                borderClass = 'border-emerald-800/50';
               } else {
-                // Live Matrix Style: Dark BG + Gold Border + Gold Text
-                colorClass = 'bg-slate-950 text-yellow-500 border border-yellow-600/50 shadow-[0_0_8px_rgba(234,179,8,0.15)]';
+                // Live Matrix Style
+                bgClass = 'bg-slate-950';
+                textClass = 'text-yellow-500';
+                borderClass = 'border-yellow-600/50';
+                shadowClass = 'shadow-[0_0_8px_rgba(234,179,8,0.15)]';
               }
 
-              // Match highlight for Live Matrix
+              // Match highlight for Live Matrix (vs Locked) - Standard Match
               if (isMatch && !isLocked) {
-                colorClass = 'bg-yellow-900/20 text-yellow-400 border border-yellow-500 shadow-[0_0_15px_rgba(234,179,8,0.6)] ring-1 ring-yellow-400 z-10 scale-110';
+                bgClass = 'bg-yellow-900/20';
+                textClass = 'text-yellow-400';
+                borderClass = 'border-yellow-500';
+                shadowClass = 'shadow-[0_0_15px_rgba(234,179,8,0.6)]';
+                ringClass = 'ring-1 ring-yellow-400';
+                zIndexClass = 'z-10';
+                scaleClass = 'scale-110';
               }
+
+              // LATEST RESULT MATCH (Highest Priority BG, but KEEP Border)
+              if (latestResult.includes(n)) {
+                bgClass = 'bg-purple-600';
+                textClass = 'text-white font-bold';
+                // Keep borderClass from above to preserve "Pool/Locked" status indication
+                // Add a ring or shadow to emphasize the match
+                ringClass = 'ring-1 ring-purple-300';
+                shadowClass = 'shadow-[0_0_15px_rgba(168,85,247,0.8)]';
+                zIndexClass = 'z-20';
+                scaleClass = 'scale-110';
+              }
+
+              const finalClass = `${bgClass} ${textClass} border ${borderClass} ${shadowClass} ${ringClass} ${zIndexClass} ${scaleClass}`;
 
               return (
-                <span key={i} onClick={() => onClickNumber && onClickNumber(n)} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base cursor-pointer hover:scale-110 transition-transform ${colorClass}`}>
+                <span key={i} onClick={() => onClickNumber && onClickNumber(n)} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base cursor-pointer hover:scale-110 transition-transform ${finalClass}`}>
                   {n < 10 ? `0${n}` : n}
                   {isDouble && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
                 </span>
@@ -1122,6 +1162,37 @@ const Mega645AnalyzerV10 = () => {
               <h3 className="text-xs font-bold text-slate-500 uppercase flex-none flex items-center gap-2">
                 <History className="w-3.5 h-3.5" /> Lịch sử 7 kỳ gần nhất
               </h3>
+
+              {latestResultStats && (
+                <div className="mb-2 p-3 bg-indigo-900/20 border border-indigo-500/30 rounded-lg flex flex-col gap-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-bold text-indigo-400 uppercase flex items-center gap-2">
+                      <Check className="w-3 h-3" /> Kết quả kỳ mới nhất ({processedData[0]?.date})
+                    </span>
+                    <HealthBadge score={latestResultStats.score} status={latestResultStats.status} />
+                  </div>
+                  <div className="flex gap-1.5 justify-center">
+                    {latestResultStats.numbers.map(n => (
+                      <span key={n} className="w-6 h-6 flex items-center justify-center bg-indigo-600 text-white text-xs font-bold rounded-full shadow border border-indigo-400">{n < 10 ? `0${n}` : n}</span>
+                    ))}
+                  </div>
+                  <div className="flex gap-2 text-[10px] font-mono font-medium flex-wrap justify-center opacity-90">
+                    <span className={`px-1.5 py-0.5 rounded border ${latestResultStats.sum >= 118 && latestResultStats.sum <= 158 ? 'border-indigo-500/30 bg-indigo-900/30 text-indigo-200' : 'border-red-500 bg-red-900/50 text-red-200'}`}>
+                      ∑{latestResultStats.sum}
+                    </span>
+
+                    <span className={`px-1.5 py-0.5 rounded border ${latestResultStats.evens >= 2 && latestResultStats.evens <= 4 ? 'border-indigo-500/30 bg-indigo-900/30 text-indigo-200' : 'border-red-500 bg-red-900/50 text-red-200'}`}>
+                      {latestResultStats.evens}C/{latestResultStats.odds}L
+                    </span>
+
+                    <span className={`px-1.5 py-0.5 rounded border ${latestResultStats.highs >= 2 && latestResultStats.highs <= 4 ? 'border-indigo-500/30 bg-indigo-900/30 text-indigo-200' : 'border-red-500 bg-red-900/50 text-red-200'}`}>
+                      {latestResultStats.highs}T/{latestResultStats.lows}X
+                    </span>
+
+                    {latestResultStats.consecutive && <span className="px-1.5 py-0.5 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-800">LiênKề</span>}
+                  </div>
+                </div>
+              )}
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-x-4 gap-y-2">
                 {poolHistory.map((hist, idx) => (
                   <div key={idx} className="flex items-center gap-3 text-sm bg-slate-950/80 p-2 rounded border border-slate-800/50 hover:border-slate-700 transition-colors">
@@ -1162,7 +1233,7 @@ const Mega645AnalyzerV10 = () => {
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {lockedMatrix ? (
                   lockedMatrix.map((stats, idx) => (
-                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} onClickNumber={handleNumberClick} />
+                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={true} onClickNumber={handleNumberClick} latestResult={processedData[0]?.numbers} />
                   ))
                 ) : (
                   <div className="h-full flex flex-col items-center justify-center text-slate-600 gap-2">
@@ -1200,7 +1271,7 @@ const Mega645AnalyzerV10 = () => {
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
                 {(strategyMode === 'WHEEL' ? generatedMatrix : balancedMatrix).map((stats, idx) => (
-                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} />
+                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} latestResult={processedData[0]?.numbers} />
                 ))}
               </div>
             </div>
