@@ -139,9 +139,9 @@ const Mega645AnalyzerV10 = () => {
   const [activeHeatmap, setActiveHeatmap] = useState<'CURRENT' | 'PREVIOUS' | null>(null);
   const [insightNumber, setInsightNumber] = useState<NumberInsight | null>(null);
 
-  // Strategy State
-  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED'>('BALANCED'); // Default to new strategy or WHEEL? Let's default to WHEEL or stick to user context. User asked to 'supplement', let's default to BALANCED to show it off? Or WHEEL. Let's keep WHEEL default but I'll set it to BALANCED for the user to see. Actually, let's set to 'BALANCED' as the user wants to test it.
+  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED' | 'REVERSE_WHEEL_8'>('REVERSE_WHEEL_8');
   const [balancedMatrix, setBalancedMatrix] = useState<TicketStats[]>([]);
+  const [reverseWheelMatrix, setReverseWheelMatrix] = useState<TicketStats[]>([]);
   const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
   const [generatedMatrix, setGeneratedMatrix] = useState<TicketStats[]>([]);
   const [lockedMatrix, setLockedMatrix] = useState<TicketStats[] | null>(() => {
@@ -555,6 +555,99 @@ const Mega645AnalyzerV10 = () => {
     generateBalancedSets();
 
   }, [frequency, strategyMode]); // Re-run when mode changes to BALANCED or data updates
+
+  // --- ENGINE: REVERSE WHEEL 8 STRATEGY ---
+  useEffect(() => {
+    if (Object.keys(frequency).length === 0) return;
+    if (strategyMode !== 'REVERSE_WHEEL_8') return;
+    if (selectedPool.length < 5) return;
+
+    const generateReverseWheelSets = () => {
+      // 1. Calculate frequencies and traps
+      const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
+      freqArray.sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.num - b.num;
+      });
+
+      // Top 22 hottest numbers (approx 50%) -> Hot Trap
+      const medianPool = freqArray.slice(22).map(f => f.num);
+
+      // 2. Anchor Pairs
+      const A = selectedPool[0].num;
+      const B = selectedPool[1].num;
+
+      // 3. Inverse Translation for 3 bases
+      const bases = [selectedPool[2].num, selectedPool[3].num, selectedPool[4].num];
+      const generated6 = new Set<number>();
+
+      bases.forEach(x => {
+        let left = x - 1 < 1 ? 45 : x - 1;
+        let right = x + 1 > 45 ? 1 : x + 1;
+        generated6.add(left);
+        generated6.add(right);
+      });
+
+      let cdefgh = Array.from(generated6);
+      let valid_cdefgh: number[] = [];
+
+      // Filter to ensure they are in Median Pool and not Anchors
+      for (let n of cdefgh) {
+        if (n !== A && n !== B && medianPool.includes(n) && !valid_cdefgh.includes(n)) {
+          valid_cdefgh.push(n);
+        }
+      }
+
+      // Fill the rest up to 6 from Median Pool
+      let ptr = 0;
+      while (valid_cdefgh.length < 6 && ptr < 200) {
+        let candidate = medianPool[Math.floor(Math.random() * medianPool.length)];
+        if (!valid_cdefgh.includes(candidate) && candidate !== A && candidate !== B) {
+          valid_cdefgh.push(candidate);
+        }
+        ptr++;
+      }
+
+      // Fallback if not enough (rare edge case)
+      let fb = 1;
+      while (valid_cdefgh.length < 6 && fb <= 45) {
+        if (!valid_cdefgh.includes(fb) && fb !== A && fb !== B) valid_cdefgh.push(fb);
+        fb++;
+      }
+
+      valid_cdefgh.sort((a, b) => a - b);
+      const C = valid_cdefgh[0];
+      const D = valid_cdefgh[1];
+      const E = valid_cdefgh[2];
+      const F = valid_cdefgh[3];
+      const G = valid_cdefgh[4];
+      const H = valid_cdefgh[5];
+
+      const tickets = [
+        [A, B, C, D, E, F],
+        [A, B, C, D, G, H],
+        [A, B, E, F, G, H],
+        [C, D, E, F, G, H]
+      ];
+
+      const processedTickets = tickets.map(t => {
+        const sorted = [...t].sort((a, b) => a - b);
+        let health = calculateTicketHealth(sorted);
+        // Tùy chỉnh health status cho Wheel 8
+        if (t === tickets[3]) {
+          health.issues.push("Vé bảo lãnh (Không có Neo)");
+        } else {
+          health.issues.push(`Chứa cặp Neo (${A}, ${B})`);
+        }
+        return health;
+      });
+
+      setReverseWheelMatrix(processedTickets);
+    };
+
+    generateReverseWheelSets();
+
+  }, [frequency, strategyMode, selectedPool]);
 
   // --- POOL HISTORY ---
   const poolHistory = useMemo(() => {
@@ -1258,22 +1351,37 @@ const Mega645AnalyzerV10 = () => {
               <div className="flex bg-slate-900 border-b border-slate-800 p-1 gap-1">
                 <button
                   onClick={() => setStrategyMode('WHEEL')}
-                  className={`flex-1 py-1.5 text-[10px] uppercase font-bold rounded transition-all ${strategyMode === 'WHEEL' ? 'bg-amber-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`flex-1 py-1 text-[9px] uppercase font-bold rounded transition-all ${strategyMode === 'WHEEL' ? 'bg-amber-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
                 >
-                  Standard Wheel
+                  Wheel Cơ Bản
                 </button>
                 <button
                   onClick={() => setStrategyMode('BALANCED')}
-                  className={`flex-1 py-1.5 text-[10px] uppercase font-bold rounded transition-all ${strategyMode === 'BALANCED' ? 'bg-purple-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`flex-1 py-1 text-[9px] uppercase font-bold rounded transition-all ${strategyMode === 'BALANCED' ? 'bg-purple-600 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
                 >
-                  Ma Trận Cân Bằng (Mới)
+                  M.Trận Cân Bằng
+                </button>
+                <button
+                  onClick={() => setStrategyMode('REVERSE_WHEEL_8')}
+                  className={`flex-1 py-1 text-[9px] uppercase font-bold rounded transition-all flex items-center justify-center gap-1 ${strategyMode === 'REVERSE_WHEEL_8' ? 'bg-rose-600 text-white shadow ring-1 ring-rose-400' : 'text-slate-500 hover:text-slate-300'}`}
+                  title="Đánh Ngược X-1/X+1 + Tách Cặp Neo + Bẫy Mật Độ (Loại 50% Hot)"
+                >
+                  <Flame className="w-3 h-3" /> Đánh Ngược
                 </button>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700">
-                {(strategyMode === 'WHEEL' ? generatedMatrix : balancedMatrix).map((stats, idx) => (
-                  <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} latestResult={processedData[0]?.numbers} />
-                ))}
+              <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700 relative">
+                {strategyMode === 'REVERSE_WHEEL_8' && (
+                  <div className="absolute top-2 left-0 right-0 text-center pointer-events-none opacity-[0.03] text-[60px] font-black italic tracking-tighter text-rose-500 z-0">
+                    WHEEL 8
+                  </div>
+                )}
+                
+                <div className="relative z-10 space-y-3">
+                  {(strategyMode === 'REVERSE_WHEEL_8' ? reverseWheelMatrix : strategyMode === 'WHEEL' ? generatedMatrix : balancedMatrix).map((stats, idx) => (
+                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} latestResult={processedData[0]?.numbers} />
+                  ))}
+                </div>
               </div>
             </div>
 
