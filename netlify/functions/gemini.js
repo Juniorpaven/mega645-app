@@ -1,16 +1,22 @@
 // File nội bộ: 2026-06-09_MG645_TECH_Ham serverless ket noi Gemini_v01.js
 // Mục đích: Gọi API Gemini ẩn danh từ Server của Netlify
-const fetch = require('node-fetch');
+// Dùng cú pháp Netlify Functions v2 để nhận thông tin xác thực từ Netlify AI Gateway
 
-exports.handler = async function(event, context) {
-  // Lấy API Key từ biến môi trường của Netlify (Settings > Environment variables)
-  const apiKey = process.env.GEMINI_API_KEY; 
+export default async (req) => {
+  // GEMINI_API_KEY / GOOGLE_GEMINI_BASE_URL được Netlify AI Gateway tự động cung cấp
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    return { statusCode: 500, body: JSON.stringify({ error: "Missing API Key" }) };
+    return Response.json({ error: "Missing API Key" }, { status: 500 });
   }
+  const baseUrl = (process.env.GOOGLE_GEMINI_BASE_URL || "https://generativelanguage.googleapis.com").replace(/\/$/, "");
 
   // Parse dữ liệu 50 kỳ quá khứ từ Frontend gửi lên
-  const body = JSON.parse(event.body);
+  let body = {};
+  try {
+    body = await req.json();
+  } catch {
+    body = {};
+  }
   const historicalData = body.history || "";
 
   const prompt = `
@@ -23,9 +29,9 @@ exports.handler = async function(event, context) {
   `;
 
   try {
-    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`, {
+    const response = await fetch(`${baseUrl}/v1beta/models/gemini-2.5-flash:generateContent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': apiKey },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }]
       })
@@ -33,14 +39,10 @@ exports.handler = async function(event, context) {
 
     const data = await response.json();
     let jsonText = data.candidates[0].content.parts[0].text;
-    jsonText = jsonText.replace(/```json/g, '').replace(/
-```/g, '').trim();
+    jsonText = jsonText.replace(/```json/g, '').replace(/```/g, '').trim();
 
-    return {
-      statusCode: 200,
-      body: JSON.stringify(JSON.parse(jsonText))
-    };
+    return Response.json(JSON.parse(jsonText));
   } catch (error) {
-    return { statusCode: 500, body: JSON.stringify({ error: "AI Processing Failed" }) };
+    return Response.json({ error: "AI Processing Failed" }, { status: 500 });
   }
 };
