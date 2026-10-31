@@ -201,10 +201,17 @@ const Mega645AnalyzerV10 = () => {
 
   const handleHardReset = () => {
     if (window.confirm('Bạn có chắc muốn xóa toàn bộ dữ liệu và reset về mặc định?')) {
-      localStorage.clear();
+      // 1. Xóa toàn bộ localStorage liên quan đến app
+      localStorage.removeItem('mega645_rawData');
+      localStorage.removeItem('mega645_currentDay');
+      localStorage.removeItem('mega645_lockedMatrix');
+      
+      // 2. Reset state về giá trị khởi tạo ban đầu
       setRawData(INITIAL_EXCEL_DATA);
       setLockedMatrix(null);
       setCurrentDay(1);
+      
+      // 3. Tải lại trang sạch hoàn toàn
       window.location.reload();
     }
   };
