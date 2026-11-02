@@ -148,7 +148,7 @@ export const validateTicket10Rules = (
   // --- R10: Phân tầng nhiệt độ (Khuyến khích 2H-2W-2C hoặc 3H-2W-1C) ---
   if (stratification) {
     const hCount = nums.filter(n => stratification.hot.includes(n)).length;
-    const wCount = nums.filter(n => stratification.warm.includes(n)).length;
+    const _wCount = nums.filter(n => stratification.warm.includes(n)).length; // Thêm dấu gạch dưới
     const cCount = nums.filter(n => stratification.cold.includes(n)).length;
 
     // Phạt các trường hợp cực đoan (toàn nóng hoặc toàn lạnh)
