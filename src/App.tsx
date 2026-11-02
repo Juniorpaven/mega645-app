@@ -359,28 +359,31 @@ const Mega645AnalyzerV10 = () => {
 
   }, [rawData]);
 
-  // --- ENGINE: COMBINATORIAL 10 RULES (ABBREVIATED WHEEL) ---
-useEffect(() => {
-  if (Object.keys(frequency).length === 0) return;
-  if (strategyMode !== 'COMBINATORIAL_10') return;
+  // --- ENGINE: COMBINATORIAL 10 RULES (ABBREVIATED WHEEL 30 VÉ) ---
+  useEffect(() => {
+    if (Object.keys(frequency).length === 0) return;
+    if (strategyMode !== 'COMBINATORIAL_10') return;
 
-  const strat = getTemperatureStratification(frequency);
-  const lastDraw = processedData[0]?.numbers || [];
+    const strat = getTemperatureStratification(frequency);
+    const lastDraw = processedData[0]?.numbers || [];
 
-  // Lập rổ K = 15 số tiềm năng: 5 Hot + 5 Warm + 3 Cold + 2 số kỳ trước
-  const pool15 = Array.from(new Set([
-    ...strat.hot.slice(0, 5),
-    ...strat.warm.slice(0, 5),
-    ...strat.cold.slice(0, 3),
-    ...lastDraw.slice(0, 2),
-  ])).slice(0, 15).sort((a, b) => a - b);
+    // CẤU HÌNH RỔ SỐ K (Mặc định chọn K = 15 số cân bằng phân phối)
+    // Có thể đổi độ dài thành 12 hoặc 18 tùy nhu cầu
+    const kSize = 15;
+    const poolK = Array.from(new Set([
+      ...strat.hot.slice(0, 6),       // 6 số Nóng
+      ...strat.warm.slice(0, 5),      // 5 số Ấm
+      ...strat.cold.slice(0, 3),      // 3 số Lạnh/Gan
+      ...lastDraw.slice(0, 2),        // 1-2 số rơi kỳ trước
+    ])).slice(0, kSize).sort((a, b) => a - b);
 
-  // Sinh và nén danh sách xuống 10 vé tối ưu nhất
-  const generatedTickets = generateAbbreviatedWheel(pool15, 10, lastDraw, strat);
-  const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
+    // Sinh và nén danh sách xuống 30 vé lẻ tối ưu nhất
+    const targetTickets = 30;
+    const generatedTickets = generateAbbreviatedWheel(poolK, targetTickets, lastDraw, strat);
+    const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
 
-  setCombinatorialMatrix(analyzedTickets);
-}, [frequency, strategyMode, processedData]);
+    setCombinatorialMatrix(analyzedTickets);
+  }, [frequency, strategyMode, processedData]);
   
   // --- ENGINE: SELECTION ---
   useEffect(() => {
@@ -1399,9 +1402,9 @@ useEffect(() => {
                       ? 'bg-emerald-600 text-white shadow ring-1 ring-emerald-400'
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
-                  title="Lọc Tổ Hợp 10 Quy Luật + Bao Thu Gọn Phủ Hamming"
+                  title="Lọc Tổ Hợp 10 Quy Luật + Bao Thu Gọn 30 Vé Phủ Hamming"
                 >
-                  <Zap className="w-3 h-3" /> 10 Quy Luật
+                  <Zap className="w-3 h-3" /> 10 Quy Luật (30 Vé)
                 </button>
               </div>
 
