@@ -1,3 +1,8 @@
+import { 
+  getTemperatureStratification, 
+  validateTicket10Rules, 
+  generateAbbreviatedWheel 
+} from './Mega645FilterEngine';
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { db } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
@@ -139,7 +144,8 @@ const Mega645AnalyzerV10 = () => {
   const [activeHeatmap, setActiveHeatmap] = useState<'CURRENT' | 'PREVIOUS' | null>(null);
   const [insightNumber, setInsightNumber] = useState<NumberInsight | null>(null);
 
-  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED' | 'REVERSE_WHEEL_8'>('REVERSE_WHEEL_8');
+  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED' | 'REVERSE_WHEEL_8' | 'COMBINATORIAL_10'>('COMBINATORIAL_10');
+  const [combinatorialMatrix, setCombinatorialMatrix] = useState<TicketStats[]>([]);
   const [balancedMatrix, setBalancedMatrix] = useState<TicketStats[]>([]);
   const [reverseWheelMatrix, setReverseWheelMatrix] = useState<TicketStats[]>([]);
   const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
@@ -267,71 +273,47 @@ const Mega645AnalyzerV10 = () => {
 
   // --- ENGINE: TICKET HEALTH SCORING ---
   const calculateTicketHealth = (numbers: number[]): TicketStats => {
-    const sum = numbers.reduce((a, b) => a + b, 0);
-    const evens = numbers.filter(n => n % 2 === 0).length;
-    const odds = 6 - evens;
-    const highs = numbers.filter(n => n > 22).length;
-    const lows = 6 - highs;
-    const doublesCount = numbers.filter(n => DOUBLE_NUMBERS.includes(n)).length;
+  const sorted = [...numbers].sort((a, b) => a - b);
+  const sum = sorted.reduce((a, b) => a + b, 0);
+  const evens = sorted.filter(n => n % 2 === 0).length;
+  const odds = 6 - evens;
+  const highs = sorted.filter(n => n > 22).length;
+  const lows = 6 - highs;
+  const doublesCount = sorted.filter(n => DOUBLE_NUMBERS.includes(n)).length;
 
-    const sorted = [...numbers].sort((a, b) => a - b);
-    let consecutive = false;
-    for (let i = 0; i < sorted.length - 1; i++) {
-      if (sorted[i + 1] === sorted[i] + 1) {
-        consecutive = true;
-        break;
-      }
+  let consecutive = false;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i + 1] === sorted[i] + 1) {
+      consecutive = true;
+      break;
     }
+  }
 
-    let score = 100;
-    let issues: string[] = [];
+  // Chạy kiểm tra qua 10 quy luật chuẩn
+  const lastDraw = processedData[0]?.numbers || [];
+  const strat = getTemperatureStratification(frequency);
+  const check = validateTicket10Rules(sorted, lastDraw, strat);
 
-    if (sum >= 118 && sum <= 158) {
-    } else if ((sum >= 100 && sum < 118) || (sum > 158 && sum <= 200)) {
-      score -= 15;
-      issues.push(`Tổng lệch (${sum})`);
-    } else {
-      score -= 40;
-      issues.push(`Tổng cực đoan (${sum})`);
-    }
+  let status: TicketStats['status'] = 'GOOD';
+  if (check.score >= 90) status = 'EXCELLENT';
+  else if (check.score >= 70) status = 'GOOD';
+  else if (check.score >= 50) status = 'WARNING';
+  else status = 'BAD';
 
-    if (evens === 0 || evens === 6) {
-      score -= 40;
-      issues.push(`Chẵn/Lẻ lệch (0-6)`);
-    } else if (evens === 1 || evens === 5) {
-      score -= 15;
-      issues.push(`Chẵn/Lẻ lệch (1-5)`);
-    }
-
-    if (highs === 0 || highs === 6) {
-      score -= 30;
-      issues.push(`Tài/Xỉu lệch (0-6)`);
-    } else if (highs === 1 || highs === 5) {
-      score -= 10;
-      issues.push(`Tài/Xỉu lệch (1-5)`);
-    }
-
-    if (consecutive) {
-      score += 5;
-    } else {
-      score -= 5;
-    }
-
-    if (doublesCount > 2) {
-      score -= 20;
-      issues.push(`Dư thừa số Kép (${doublesCount})`);
-    }
-
-    score = Math.min(100, Math.max(0, score));
-
-    let status: TicketStats['status'] = 'GOOD';
-    if (score >= 90) status = 'EXCELLENT';
-    else if (score >= 70) status = 'GOOD';
-    else if (score >= 50) status = 'WARNING';
-    else status = 'BAD';
-
-    return { numbers: sorted, sum, evens, odds, highs, lows, consecutive, doublesCount, score, status, issues };
+  return {
+    numbers: sorted,
+    sum,
+    evens,
+    odds,
+    highs,
+    lows,
+    consecutive,
+    doublesCount,
+    score: check.score,
+    status,
+    issues: check.failedRules,
   };
+};
 
   // --- ENGINE: DATA PROCESSING ---
   useEffect(() => {
@@ -377,6 +359,29 @@ const Mega645AnalyzerV10 = () => {
 
   }, [rawData]);
 
+  // --- ENGINE: COMBINATORIAL 10 RULES (ABBREVIATED WHEEL) ---
+useEffect(() => {
+  if (Object.keys(frequency).length === 0) return;
+  if (strategyMode !== 'COMBINATORIAL_10') return;
+
+  const strat = getTemperatureStratification(frequency);
+  const lastDraw = processedData[0]?.numbers || [];
+
+  // Lập rổ K = 15 số tiềm năng: 5 Hot + 5 Warm + 3 Cold + 2 số kỳ trước
+  const pool15 = Array.from(new Set([
+    ...strat.hot.slice(0, 5),
+    ...strat.warm.slice(0, 5),
+    ...strat.cold.slice(0, 3),
+    ...lastDraw.slice(0, 2),
+  ])).slice(0, 15).sort((a, b) => a - b);
+
+  // Sinh và nén danh sách xuống 10 vé tối ưu nhất
+  const generatedTickets = generateAbbreviatedWheel(pool15, 10, lastDraw, strat);
+  const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
+
+  setCombinatorialMatrix(analyzedTickets);
+}, [frequency, strategyMode, processedData]);
+  
   // --- ENGINE: SELECTION ---
   useEffect(() => {
     const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
@@ -580,12 +585,13 @@ const Mega645AnalyzerV10 = () => {
       // Top 22 hottest numbers (approx 50%) -> Hot Trap
       const medianPool = freqArray.slice(22).map(f => f.num);
 
-      // 2. Anchor Pairs
-      const A = selectedPool[0].num;
-      const B = selectedPool[1].num;
+      // 2. Anchor Pairs (Sắp xếp lại theo tần suất giảm dần trước khi lấy Neo)
+      const poolByFreq = [...selectedPool].sort((a, b) => b.count - a.count);
+      const A = poolByFreq[0].num;
+      const B = poolByFreq[1].num;
 
       // 3. Inverse Translation for 3 bases
-      const bases = [selectedPool[2].num, selectedPool[3].num, selectedPool[4].num];
+      const bases = [poolByFreq[2].num, poolByFreq[3].num, poolByFreq[4].num];
       const generated6 = new Set<number>();
 
       bases.forEach(x => {
@@ -734,7 +740,18 @@ const Mega645AnalyzerV10 = () => {
   };
 
   // --- HANDLERS ---
-  const handleLock = () => { setLockedMatrix(generatedMatrix); setCurrentDay(1); };
+  const handleLock = () => {
+    const activeMatrix =
+      strategyMode === 'COMBINATORIAL_10'
+        ? combinatorialMatrix
+        : strategyMode === 'REVERSE_WHEEL_8'
+        ? reverseWheelMatrix
+        : strategyMode === 'WHEEL'
+        ? generatedMatrix
+        : balancedMatrix;
+    setLockedMatrix(activeMatrix);
+    setCurrentDay(1);
+  };
   const handleUnlock = () => { setLockedMatrix(null); }; // Unlock to edit
   const handleNextDay = () => { if (currentDay < 7) setCurrentDay(currentDay + 1); };
 
@@ -967,7 +984,7 @@ const Mega645AnalyzerV10 = () => {
 
           {/* Mini Indicators (Always Visible) */}
           <div className="flex gap-2 text-xs font-mono font-medium flex-wrap justify-center">
-            <span className={`px-2 py-1 rounded border ${stats.sum >= 118 && stats.sum <= 158 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-red-800 text-red-400 bg-red-900/20'}`}>
+            <span className={`px-2 py-1 rounded border ${stats.sum >= 95 && stats.sum <= 181 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-red-800 text-red-400 bg-red-900/20'}`}>
               ∑{stats.sum}
             </span>
             <span className={`px-2 py-1 rounded border ${stats.evens >= 2 && stats.evens <= 4 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-yellow-800 text-yellow-400 bg-yellow-900/20'}`}>
@@ -1278,7 +1295,7 @@ const Mega645AnalyzerV10 = () => {
                     ))}
                   </div>
                   <div className="flex gap-2 text-[10px] font-mono font-medium flex-wrap justify-center opacity-90">
-                    <span className={`px-1.5 py-0.5 rounded border ${latestResultStats.sum >= 118 && latestResultStats.sum <= 158 ? 'border-indigo-500/30 bg-indigo-900/30 text-indigo-200' : 'border-red-500 bg-red-900/50 text-red-200'}`}>
+                    <span className={`px-1.5 py-0.5 rounded border ${latestResultStats.sum >= 95 && latestResultStats.sum <= 181 ? 'border-indigo-500/30 bg-indigo-900/30 text-indigo-200' : 'border-red-500 bg-red-900/50 text-red-200'}`}>
                       ∑{latestResultStats.sum}
                     </span>
 
@@ -1375,6 +1392,17 @@ const Mega645AnalyzerV10 = () => {
                 >
                   <Flame className="w-3 h-3" /> Đánh Ngược
                 </button>
+                <button
+                  onClick={() => setStrategyMode('COMBINATORIAL_10')}
+                  className={`flex-1 py-1 text-[9px] uppercase font-bold rounded transition-all flex items-center justify-center gap-1 ${
+                    strategyMode === 'COMBINATORIAL_10'
+                      ? 'bg-emerald-600 text-white shadow ring-1 ring-emerald-400'
+                      : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                  title="Lọc Tổ Hợp 10 Quy Luật + Bao Thu Gọn Phủ Hamming"
+                >
+                  <Zap className="w-3 h-3" /> 10 Quy Luật
+                </button>
               </div>
 
               <div className="flex-1 overflow-y-auto p-3 space-y-3 scrollbar-thin scrollbar-thumb-slate-700 relative">
@@ -1385,8 +1413,23 @@ const Mega645AnalyzerV10 = () => {
                 )}
                 
                 <div className="relative z-10 space-y-3">
-                  {(strategyMode === 'REVERSE_WHEEL_8' ? reverseWheelMatrix : strategyMode === 'WHEEL' ? generatedMatrix : balancedMatrix).map((stats, idx) => (
-                    <TicketRowV10 key={idx} stats={stats} index={idx} isLocked={false} lockedSet={lockedNumbersSet} onClickNumber={handleNumberClick} latestResult={processedData[0]?.numbers} />
+                  {(strategyMode === 'COMBINATORIAL_10'
+                    ? combinatorialMatrix
+                    : strategyMode === 'REVERSE_WHEEL_8'
+                    ? reverseWheelMatrix
+                    : strategyMode === 'WHEEL'
+                    ? generatedMatrix
+                    : balancedMatrix
+                  ).map((stats, idx) => (
+                    <TicketRowV10
+                      key={idx}
+                      stats={stats}
+                      index={idx}
+                      isLocked={false}
+                      lockedSet={lockedNumbersSet}
+                      onClickNumber={handleNumberClick}
+                      latestResult={processedData[0]?.numbers}
+                    />
                   ))}
                 </div>
               </div>
