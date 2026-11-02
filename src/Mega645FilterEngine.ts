@@ -1,5 +1,5 @@
 // File: src/Mega645FilterEngine.ts
-// Kiến trúc toán học: Bộ lọc 10 Quy luật & Bao thu gọn Mega 6/45
+// Kiến trúc toán học: Bộ lọc 10 Quy luật & Bao thu gọn 30 vé (K = 12, 15, 18)
 
 export const PRIMES_45 = [2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43];
 
@@ -15,7 +15,7 @@ export interface TemperatureStratification {
   cold: number[];
 }
 
-// 1. Phân tầng 45 số thành 3 nhóm (15 Hot, 15 Warm, 15 Cold) dựa trên lịch sử
+// 1. Phân tầng 45 số thành 3 nhóm (15 Hot, 15 Warm, 15 Cold)
 export const getTemperatureStratification = (
   freqMap: Record<number, number>
 ): TemperatureStratification => {
@@ -33,7 +33,7 @@ export const getTemperatureStratification = (
   };
 };
 
-// 2. Hàm kiểm tra toàn diện 10 quy luật trên một bộ 6 số (sorted)
+// 2. Kiểm tra toàn diện 10 quy luật trên một bộ 6 số (sorted)
 export const validateTicket10Rules = (
   nums: number[],
   lastDrawNumbers: number[] = [],
@@ -72,7 +72,7 @@ export const validateTicket10Rules = (
   }
   const ac = diffs.size - 5;
   if (ac < 6) {
-    failedRules.push(`R4: AC quá thấp (${ac})`);
+    failedRules.push(`R4: AC thấp (${ac})`);
     score -= 30;
   }
 
@@ -123,16 +123,16 @@ export const validateTicket10Rules = (
     score -= 15;
   }
 
-  // --- R8: Độ rộng (Range 22..43) & Số nguyên tố (1..3 số) ---
+  // --- R8: Độ rộng (22..43) & Số nguyên tố (1..3 số) ---
   const range = nums[nums.length - 1] - nums[0];
   const primeCount = nums.filter(n => PRIMES_45.includes(n)).length;
 
   if (range < 22 || range > 43) {
-    failedRules.push(`R8: Độ rộng biên lệch (${range})`);
+    failedRules.push(`R8: Độ rộng lệch (${range})`);
     score -= 15;
   }
   if (primeCount < 1 || primeCount > 3) {
-    failedRules.push(`R8: Nguyên tố vi phạm (${primeCount})`);
+    failedRules.push(`R8: Nguyên tố lệch (${primeCount})`);
     score -= 15;
   }
 
@@ -145,14 +145,13 @@ export const validateTicket10Rules = (
     }
   }
 
-  // --- R10: Phân tầng nhiệt độ (Khuyến khích 2H-2W-2C hoặc 3H-2W-1C) ---
+  // --- R10: Phân tầng nhiệt độ ---
   if (stratification) {
     const hCount = nums.filter(n => stratification.hot.includes(n)).length;
     const cCount = nums.filter(n => stratification.cold.includes(n)).length;
 
-    // Phạt các trường hợp cực đoan (toàn nóng hoặc toàn lạnh)
     if (hCount >= 5 || cCount >= 4 || (hCount === 0 && cCount === 0)) {
-      failedRules.push(`R10: Nhiệt độ mất cân bằng`);
+      failedRules.push(`R10: Nhiệt độ lệch`);
       score -= 25;
     }
   }
@@ -165,7 +164,7 @@ export const validateTicket10Rules = (
   };
 };
 
-// 3. Hàm sinh bao thu gọn tổ hợp (Abbreviated Wheeling Engine)
+// 3. Thuật toán Bao thu gọn nén dàn vé (Abbreviated Wheeling System)
 export const generateAbbreviatedWheel = (
   poolNumbers: number[],
   targetTicketsCount: number = 30,
@@ -174,15 +173,18 @@ export const generateAbbreviatedWheel = (
 ): { numbers: number[]; score: number; issues: string[] }[] => {
   if (poolNumbers.length < 6) return [];
 
-  // Sinh toàn bộ C(K, 6) bằng đệ quy
   const combinations: number[][] = [];
   const k = poolNumbers.length;
 
+  // Sinh toàn bộ tổ hợp C(K, 6)
   const combine = (start: number, chosen: number[]) => {
     if (chosen.length === 6) {
       combinations.push([...chosen]);
       return;
     }
+    // Giới hạn an toàn bộ nhớ trình duyệt cho rổ lớn K = 18
+    if (combinations.length >= 25000) return;
+
     for (let i = start; i < k; i++) {
       chosen.push(poolNumbers[i]);
       combine(i + 1, chosen);
@@ -203,30 +205,47 @@ export const generateAbbreviatedWheel = (
         issues: evalResult.failedRules,
       };
     })
-    .filter(item => item.score >= 70) // Giữ lại các bộ số qua được khung chấm điểm
+    .filter(item => item.score >= 60)
     .sort((a, b) => b.score - a.score);
 
-  // Áp dụng khoảng cách Hamming để tối ưu độ phủ (tránh trùng nhau quá 3 số)
+  // Phủ khoảng cách Hamming để tối ưu diện tích bắt giải
   const selectedTickets: typeof scoredCombinations = [];
 
+  // Vòng 1: Quét với khoảng cách Hamming gắt (trùng tối đa 3 số)
   for (const candidate of scoredCombinations) {
     if (selectedTickets.length >= targetTicketsCount) break;
 
     const isDiverse = selectedTickets.every(selected => {
       const intersect = candidate.numbers.filter(n => selected.numbers.includes(n)).length;
-      return intersect <= 3; // Kiểm soát độ phủ tối đa 3 số trùng giữa 2 vé bất kỳ
+      return intersect <= 3;
     });
 
-    if (isDiverse || selectedTickets.length < 5) {
+    if (isDiverse) {
       selectedTickets.push(candidate);
     }
   }
 
-  // Dự phòng nếu điều kiện phủ quá chặt
+  // Vòng 2: Nới lỏng khoảng cách (trùng tối đa 4 số) nếu chưa đạt đủ số lượng mục tiêu
   if (selectedTickets.length < targetTicketsCount) {
     for (const candidate of scoredCombinations) {
       if (selectedTickets.length >= targetTicketsCount) break;
-      if (!selectedTickets.includes(candidate)) {
+      if (!selectedTickets.some(t => t.numbers.join('-') === candidate.numbers.join('-'))) {
+        const isAcceptable = selectedTickets.every(selected => {
+          const intersect = candidate.numbers.filter(n => selected.numbers.includes(n)).length;
+          return intersect <= 4;
+        });
+        if (isAcceptable) {
+          selectedTickets.push(candidate);
+        }
+      }
+    }
+  }
+
+  // Vòng 3: Bổ sung các vé có điểm số cao nhất còn lại nếu vẫn chưa đủ 30 vé
+  if (selectedTickets.length < targetTicketsCount) {
+    for (const candidate of scoredCombinations) {
+      if (selectedTickets.length >= targetTicketsCount) break;
+      if (!selectedTickets.some(t => t.numbers.join('-') === candidate.numbers.join('-'))) {
         selectedTickets.push(candidate);
       }
     }
