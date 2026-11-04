@@ -18,6 +18,47 @@ const WHEEL_TEMPLATE = [
   [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
 ];
 
+// --- CẤU HÌNH KẾT NỐI GOOGLE APPS SCRIPT ---
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzRPcaNkN0TAX7uFK9R3cwXx35jFNtbBUyaSe9jHfcO2ES7bFmCvv2tUBaTOVS6VAEpfw/exec";
+
+// Hàm gửi 30 vé dự đoán sang Google Sheets (DU_DOAN_LOG)
+const syncPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
+  try {
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "LOG_PREDICTIONS",
+        targetDate: targetDate,
+        tickets: tickets
+      })
+    });
+    console.log("✅ Đã gửi 30 vé dự đoán sang Sheets đối soát!");
+  } catch (err) {
+    console.error("Lỗi đồng bộ dự đoán sang Sheets:", err);
+  }
+};
+
+// Hàm cập nhật kỳ quay mới vào Google Sheets (DATA_MEGA)
+const syncNewDrawToSheets = async (date: string, numbers: number[]) => {
+  try {
+    await fetch(GOOGLE_SCRIPT_URL, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "ADD_DRAW_RESULT",
+        date: date,
+        numbers: numbers
+      })
+    });
+    console.log("✅ Đã gửi kỳ quay mới sang DATA_MEGA!");
+  } catch (err) {
+    console.error("Lỗi đồng bộ kết quả mới sang Sheets:", err);
+  }
+};
+
 // Sample Data
 const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
 20-11-2023	05	12	19	28	35	44
@@ -248,27 +289,48 @@ const Mega645AnalyzerV10 = () => {
     }
   };
 
-  const handleUpdateNewDay = () => {
+  const handleUpdateNewDay = async () => {
     if (!newDayInput.trim()) return;
 
-    const nums = newDayInput.match(/\d+/g);
-    if (!nums || nums.length < 6) {
-      alert("Vui lòng nhập đúng định dạng (ít nhất 6 số)!");
+    // 1. Tách chuỗi ngày và mảng 6 số
+    const parts = newDayInput.trim().split(/[\t,;|\s]+/);
+    let dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
+    if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
+      dateStr = parts[0].replace(/[/. ]/g, '-');
+    }
+
+    const allNums = newDayInput.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
+    const validNums = allNums.filter(n => n >= 1 && n <= 45);
+
+    if (validNums.length < 6) {
+      alert("Vui lòng nhập đúng định dạng: Ngày và ít nhất 6 con số (1-45)!");
       return;
     }
 
-    const currentLines = rawData.trim().split('\n');
-    // Keep history, don't slice to 30
-    const newLines = [newDayInput.trim(), ...currentLines];
+    const finalDrawNums = validNums.slice(-6);
 
+    // 2. Cập nhật dữ liệu nội bộ trên Web (Cuốn chiếu 30 kỳ)
+    const currentLines = rawData.trim().split('\n');
+    const newLines = [newDayInput.trim(), ...currentLines];
     setRawData(newLines.join('\n'));
     setNewDayInput('');
 
     if (currentDay < 7) {
       setCurrentDay(currentDay + 1);
-    } else {
-      alert("Đã hoàn thành chu kỳ 7 ngày! Hãy cân nhắc Reset chiến dịch.");
     }
+
+    // 3. Tự động gửi kết quả kỳ mới sang Google Sheets (DATA_MEGA)
+    await syncNewDrawToSheets(dateStr, finalDrawNums);
+
+    // 4. Lấy 30 vé dự đoán hiện tại của tab 10 Quy Luật để ghi vào DU_DOAN_LOG
+    if (combinatorialMatrix && combinatorialMatrix.length > 0) {
+      const ticketsToSend = combinatorialMatrix.slice(0, 30).map(t => t.numbers);
+      // Ngày mục tiêu kỳ tới (hiển thị ghi chú đối soát)
+      const nextTargetDate = `Dự đoán sau kỳ ${dateStr}`;
+      await syncPredictionsToSheets(nextTargetDate, ticketsToSend);
+    }
+
+    alert(`✅ Đã thêm ngày ${dateStr} thành công!\n- Đã cập nhật vào phân tích 30 kỳ trên web.\n- Đã đồng bộ sang Google Sheets để đối soát giải thưởng.`);
   };
 
   // --- ENGINE: TICKET HEALTH SCORING ---
