@@ -448,6 +448,8 @@ const Mega645AnalyzerV10 = () => {
 
   }, [rawData]);
 
+  const lastSyncedDateRef = useRef<string>("");
+
   // --- ENGINE: COMBINATORIAL 10 RULES (ABBREVIATED WHEEL 30 VÉ) ---
   useEffect(() => {
     if (Object.keys(frequency).length === 0) return;
@@ -456,27 +458,26 @@ const Mega645AnalyzerV10 = () => {
     const strat = getTemperatureStratification(frequency);
     const lastDraw = processedData[0]?.numbers || [];
 
-    // CẤU HÌNH RỔ SỐ K (Mặc định K = 15 số cân bằng phân phối)
     const kSize = 15;
     const poolK = Array.from(new Set([
-      ...strat.hot.slice(0, 6),       // 6 số Nóng
-      ...strat.warm.slice(0, 5),      // 5 số Ấm
-      ...strat.cold.slice(0, 3),      // 3 số Lạnh/Gan
-      ...lastDraw.slice(0, 2),        // 1-2 số rơi kỳ trước
+      ...strat.hot.slice(0, 6),
+      ...strat.warm.slice(0, 5),
+      ...strat.cold.slice(0, 3),
+      ...lastDraw.slice(0, 2),
+      ...strat.hot,
+      ...strat.warm,
     ])).slice(0, kSize).sort((a, b) => a - b);
 
-    // 1. Sinh và nén danh sách xuống đúng 30 vé lẻ tối ưu nhất
     const targetTickets = 30;
     const generatedTickets = generateAbbreviatedWheel(poolK, targetTickets, lastDraw, strat);
     const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
 
-    // 2. Cập nhật ma trận hiển thị trên giao diện Web
     setCombinatorialMatrix(analyzedTickets);
 
-    // 3. Tự động bắn 30 vé này sang sheet DU_DOAN_LOG để đối soát
-    if (generatedTickets.length > 0) {
+    const latestDateStr = processedData[0]?.date || "";
+    if (generatedTickets.length > 0 && latestDateStr && lastSyncedDateRef.current !== latestDateStr) {
+      lastSyncedDateRef.current = latestDateStr;
       const ticketsOnly = generatedTickets.slice(0, 30).map(t => t.numbers);
-      const latestDateStr = processedData[0]?.date || "Hôm nay";
       pushPredictionsToSheets(`Dự đoán sau kỳ ${latestDateStr}`, ticketsOnly);
     }
   }, [frequency, strategyMode, processedData]);
