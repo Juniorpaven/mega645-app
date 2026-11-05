@@ -16,20 +16,23 @@ export interface TemperatureStratification {
 }
 
 // 1. Phân tầng 45 số thành 3 nhóm (15 Hot, 15 Warm, 15 Cold)
-export const getTemperatureStratification = (
-  freqMap: Record<number, number>
-): TemperatureStratification => {
-  const sorted = Object.keys(freqMap)
-    .map(k => ({ num: parseInt(k), count: freqMap[parseInt(k)] || 0 }))
-    .sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.num - b.num;
-    });
+export const getTemperatureStratification = (frequency: Record<number, number>) => {
+  const arr = Array.from({ length: 45 }, (_, i) => {
+    const num = i + 1;
+    return { num, count: frequency[num] || 0 };
+  });
+
+  // Sắp xếp giảm dần theo tần suất; nếu bằng tần suất thì ưu tiên phân bổ từ tâm (23) ra 2 phía
+  // để tránh lỗi dồn toàn bộ các số nhỏ (01..15) vào đầu mảng Warm và Cold
+  arr.sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return Math.abs(a.num - 23) - Math.abs(b.num - 23);
+  });
 
   return {
-    hot: sorted.slice(0, 15).map(i => i.num),
-    warm: sorted.slice(15, 30).map(i => i.num),
-    cold: sorted.slice(30, 45).map(i => i.num),
+    hot: arr.slice(0, 15).map(x => x.num),
+    warm: arr.slice(15, 30).map(x => x.num),
+    cold: arr.slice(30, 45).map(x => x.num),
   };
 };
 
