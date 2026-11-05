@@ -9,20 +9,11 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History, X, BarChart3 } from 'lucide-react';
 
-// --- CONSTANTS & CONFIG ---
-const TOTAL_NUMBERS = 45;
-const DOUBLE_NUMBERS = [11, 22, 33, 44];
-const WHEEL_TEMPLATE = [
-  [0, 1, 2, 3, 4, 5], [0, 1, 2, 6, 7, 8], [0, 1, 3, 4, 6, 9],
-  [0, 2, 3, 5, 7, 8], [1, 4, 5, 6, 8, 9], [2, 3, 4, 7, 8, 9],
-  [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
-];
+// --- CẤU HÌNH KẾT NỐI GOOGLE APPS SCRIPT DUY NHẤT ---
+const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_NjoyhIJ9Jjm60jGUsgUxrrbFVo9DtMMM7qPS6ckBKuHGNEPAbL3iPhePvhdvANJCiQ/exec";
 
-// --- CẤU HÌNH KẾT NỐI GOOGLE APPS SCRIPT ---
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzRPcaNkN0TAX7uFK9R3cwXx35jFNtbBUyaSe9jHfcO2ES7bFmCvv2tUBaTOVS6VAEpfw/exec";
-
-// Hàm gửi 30 vé dự đoán sang Google Sheets (DU_DOAN_LOG)
-const syncPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
+// Gửi 30 vé dự đoán lên DU_DOAN_LOG
+const pushPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
   try {
     await fetch(GOOGLE_SCRIPT_URL, {
       method: "POST",
@@ -34,10 +25,15 @@ const syncPredictionsToSheets = async (targetDate: string, tickets: number[][]) 
         tickets: tickets
       })
     });
-    console.log("✅ Đã gửi 30 vé dự đoán sang Sheets đối soát!");
+    console.log("✅ Đã tự động đẩy 30 vé dự đoán sang Google Sheets!");
   } catch (err) {
-    console.error("Lỗi đồng bộ dự đoán sang Sheets:", err);
+    console.error("Lỗi gửi dự đoán:", err);
   }
+};
+
+// Hàm gửi 30 vé dự đoán sang Google Sheets khi bấm nút (dự phòng)
+const syncPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
+  await pushPredictionsToSheets(targetDate, tickets);
 };
 
 // Hàm cập nhật kỳ quay mới vào Google Sheets (DATA_MEGA)
@@ -58,6 +54,15 @@ const syncNewDrawToSheets = async (date: string, numbers: number[]) => {
     console.error("Lỗi đồng bộ kết quả mới sang Sheets:", err);
   }
 };
+
+// --- CONSTANTS & CONFIG ---
+const TOTAL_NUMBERS = 45;
+const DOUBLE_NUMBERS = [11, 22, 33, 44];
+const WHEEL_TEMPLATE = [
+  [0, 1, 2, 3, 4, 5], [0, 1, 2, 6, 7, 8], [0, 1, 3, 4, 6, 9],
+  [0, 2, 3, 5, 7, 8], [1, 4, 5, 6, 8, 9], [2, 3, 4, 7, 8, 9],
+  [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
+];
 
 // Sample Data
 const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
@@ -203,6 +208,28 @@ const Mega645AnalyzerV10 = () => {
 
   // --- PERSISTENCE ---
   // --- PERSISTENCE & SYNC ---
+  // --- TỰ ĐỘNG TẢI 30 KỲ TỪ GOOGLE SHEETS VÀO WEB ---
+  useEffect(() => {
+    const fetchLatestDraws = async () => {
+      try {
+        const res = await fetch(GOOGLE_SCRIPT_URL);
+        const json = await res.json();
+        if (json.status === "SUCCESS" && json.data && json.data.length > 0) {
+          // Định dạng lại thành text nhiều dòng tương thích với rawData của App: "dd-MM-yyyy b1 b2 b3 b4 b5 b6"
+          const formattedLines = json.data.map((item: { date: string; numbers: number[] }) => {
+            const ballStr = item.numbers.map((n: number) => n < 10 ? `0${n}` : `${n}`).join(' ');
+            return `${item.date} ${ballStr}`;
+          });
+          setRawData(formattedLines.join('\n'));
+          console.log(`✅ Đã tự động tải ${json.data.length} kỳ mới nhất từ Google Sheets`);
+        }
+      } catch (err) {
+        console.warn("Chưa thể tự động kéo kết quả từ Google Sheets, sử dụng dữ liệu mặc định/local:", err);
+      }
+    };
+
+    fetchLatestDraws();
+  }, []);
   // 1. Listen for updates from Firebase
   useEffect(() => {
     const unsubscribe = onSnapshot(doc(db, "mega645", "data"), (docSnap) => {
@@ -429,8 +456,7 @@ const Mega645AnalyzerV10 = () => {
     const strat = getTemperatureStratification(frequency);
     const lastDraw = processedData[0]?.numbers || [];
 
-    // CẤU HÌNH RỔ SỐ K (Mặc định chọn K = 15 số cân bằng phân phối)
-    // Có thể đổi độ dài thành 12 hoặc 18 tùy nhu cầu
+    // CẤU HÌNH RỔ SỐ K (Mặc định K = 15 số cân bằng phân phối)
     const kSize = 15;
     const poolK = Array.from(new Set([
       ...strat.hot.slice(0, 6),       // 6 số Nóng
@@ -439,12 +465,20 @@ const Mega645AnalyzerV10 = () => {
       ...lastDraw.slice(0, 2),        // 1-2 số rơi kỳ trước
     ])).slice(0, kSize).sort((a, b) => a - b);
 
-    // Sinh và nén danh sách xuống 30 vé lẻ tối ưu nhất
+    // 1. Sinh và nén danh sách xuống đúng 30 vé lẻ tối ưu nhất
     const targetTickets = 30;
     const generatedTickets = generateAbbreviatedWheel(poolK, targetTickets, lastDraw, strat);
     const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
 
+    // 2. Cập nhật ma trận hiển thị trên giao diện Web
     setCombinatorialMatrix(analyzedTickets);
+
+    // 3. Tự động bắn 30 vé này sang sheet DU_DOAN_LOG để đối soát
+    if (generatedTickets.length > 0) {
+      const ticketsOnly = generatedTickets.slice(0, 30).map(t => t.numbers);
+      const latestDateStr = processedData[0]?.date || "Hôm nay";
+      pushPredictionsToSheets(`Dự đoán sau kỳ ${latestDateStr}`, ticketsOnly);
+    }
   }, [frequency, strategyMode, processedData]);
   
   // --- ENGINE: SELECTION ---
