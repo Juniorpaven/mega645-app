@@ -1,69 +1,38 @@
-import { 
-  getTemperatureStratification, 
-  validateTicket10Rules, 
-  generateAbbreviatedWheel 
-} from './Mega645FilterEngine';
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { db } from './firebase';
+import { db, authReady } from './firebase';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-
 import { FileSpreadsheet, Calendar, Check, Activity, HeartPulse, Layers, Download, Upload, Trash2, PlusCircle, Copy, ClipboardPaste, Maximize2, Lock, Flame, Snowflake, Zap, RotateCcw, History, X, BarChart3 } from 'lucide-react';
+import {
+  analyze,
+  poolHistoryOf,
+  formatDrawLine,
+  normalizeDate,
+  parseDrawLine,
+  type StrategyId,
+  type TicketStats,
+} from './strategies';
+import { fetchDraws, addDrawResult, logPredictions } from './sheetsApi';
+import { FrequencyHeatmap, HealthBadge, TicketRowV10, LineItem } from './components';
 
-// --- CẤU HÌNH KẾT NỐI GOOGLE APPS SCRIPT DUY NHẤT ---
-const GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_NjoyhIJ9Jjm60jGUsgUxrrbFVo9DtMMM7qPS6ckBKuHGNEPAbL3iPhePvhdvANJCiQ/exec";
+// --- KHOÁ LƯU TRỮ CỤC BỘ ---
+const LS_RAW = 'mega645_rawData';
+const LS_DAY = 'mega645_currentDay';
+const LS_LOCKED = 'mega645_lockedMatrix';
+const LS_LAST_PREDICTION_SYNC = 'mega645_lastPredictionSync';
 
-// Gửi 30 vé dự đoán lên DU_DOAN_LOG
-const pushPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
+const STATE_DOC = doc(db, 'mega645', 'data');
+
+const safeGet = (key: string) => {
+  try { return localStorage.getItem(key); } catch { return null; }
+};
+const safeSet = (key: string, value: string | null) => {
   try {
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "LOG_PREDICTIONS",
-        targetDate: targetDate,
-        tickets: tickets
-      })
-    });
-    console.log("✅ Đã tự động đẩy 30 vé dự đoán sang Google Sheets!");
-  } catch (err) {
-    console.error("Lỗi gửi dự đoán:", err);
-  }
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch { /* bỏ qua khi trình duyệt chặn storage */ }
 };
 
-// Hàm gửi 30 vé dự đoán sang Google Sheets khi bấm nút (dự phòng)
-const syncPredictionsToSheets = async (targetDate: string, tickets: number[][]) => {
-  await pushPredictionsToSheets(targetDate, tickets);
-};
-
-// Hàm cập nhật kỳ quay mới vào Google Sheets (DATA_MEGA)
-const syncNewDrawToSheets = async (date: string, numbers: number[]) => {
-  try {
-    await fetch(GOOGLE_SCRIPT_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "ADD_DRAW_RESULT",
-        date: date,
-        numbers: numbers
-      })
-    });
-    console.log("✅ Đã gửi kỳ quay mới sang DATA_MEGA!");
-  } catch (err) {
-    console.error("Lỗi đồng bộ kết quả mới sang Sheets:", err);
-  }
-};
-
-// --- CONSTANTS & CONFIG ---
-const TOTAL_NUMBERS = 45;
-const DOUBLE_NUMBERS = [11, 22, 33, 44];
-const WHEEL_TEMPLATE = [
-  [0, 1, 2, 3, 4, 5], [0, 1, 2, 6, 7, 8], [0, 1, 3, 4, 6, 9],
-  [0, 2, 3, 5, 7, 8], [1, 4, 5, 6, 8, 9], [2, 3, 4, 7, 8, 9],
-  [0, 3, 5, 6, 7, 9], [1, 2, 4, 5, 8, 9], [3, 4, 6, 7, 8, 5], [0, 1, 2, 9, 4, 8]
-];
-
+// Dữ liệu mẫu (chỉ dùng khi chưa tải được Google Sheets và chưa có cache)
 // Sample Data
 const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
 20-11-2023	05	12	19	28	35	44
@@ -96,21 +65,6 @@ const INITIAL_EXCEL_DATA = `22-11-2023	03	14	22	26	31	43
 18-09-2023	06	14	21	28	36	44
 16-09-2023	04	10	17	25	32	41`;
 
-// --- TYPES ---
-type TicketStats = {
-  numbers: number[];
-  sum: number;
-  evens: number;
-  odds: number;
-  highs: number;
-  lows: number;
-  consecutive: boolean;
-  doublesCount: number;
-  score: number;
-  status: 'EXCELLENT' | 'GOOD' | 'WARNING' | 'BAD';
-  issues: string[];
-};
-
 type NumberInsight = {
   num: number;
   lastDate: string;
@@ -120,174 +74,143 @@ type NumberInsight = {
   type: 'HOT' | 'WARM' | 'COLD';
 };
 
-// --- HELPER: POOL CALCULATION ---
-const getPoolForData = (lines: string[]) => {
-  // 1. Calculate Frequency
-  const freqMap: Record<number, number> = {};
-  for (let i = 1; i <= 45; i++) freqMap[i] = 0;
-
-  let validCount = 0;
-  let firstDate = "N/A";
-
-  lines.forEach((line, idx) => {
-    const parts = line.trim().split(/[\t,;|\s]+/);
-    if (idx === 0 && parts[0]) {
-      if (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.')) {
-        firstDate = parts[0].replace(/[/. ]/g, '-');
-      }
-    }
-
-    const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
-    const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
-
-    if (validRangeNumbers.length >= 6) {
-      const finalNums = validRangeNumbers.slice(-6);
-      finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
-      validCount++;
-    }
-  });
-
-  if (validCount < 10) return null;
-
-  // 2. Select Pool
-  const freqArray = Object.keys(freqMap).map(k => ({ num: parseInt(k), count: freqMap[parseInt(k)] }));
-  freqArray.sort((a, b) => {
-    if (b.count !== a.count) return b.count - a.count;
-    return a.num - b.num;
-  });
-
-  // Modified Strategy: 4 HOT, 4 WARM, 2 COLD
-  const hot = freqArray.slice(0, 4).map(i => i.num);
-  const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
-  const warm = freqArray.slice(midStart, midStart + 4).map(i => i.num);
-  const cold = freqArray.slice(Math.max(0, freqArray.length - 2)).map(i => i.num);
-
-  let poolIndices = Array.from(new Set([...hot, ...warm, ...cold]));
-  let ptr = 0;
-  while (poolIndices.length < 10 && ptr < freqArray.length) {
-    if (!poolIndices.includes(freqArray[ptr].num)) poolIndices.push(freqArray[ptr].num);
-    ptr++;
-  }
-
-  const finalPool = poolIndices.slice(0, 10).sort((a, b) => a - b).map(num => ({
-    num,
-    type: hot.includes(num) ? 'HOT' : cold.includes(num) ? 'COLD' : 'WARM'
-  }));
-
-  return {
-    date: firstDate,
-    pool: finalPool
-  };
-};
+type DataSource = 'SHEETS' | 'CACHE' | 'SAMPLE';
 
 const Mega645AnalyzerV10 = () => {
   // --- STATE ---
-  const [rawData, setRawData] = useState(() => localStorage.getItem('mega645_rawData') || INITIAL_EXCEL_DATA);
-  const [processedData, setProcessedData] = useState<{ date: string, numbers: number[] }[]>([]);
-  const [frequency, setFrequency] = useState<Record<number, number>>({});
-  const [prevFrequency, setPrevFrequency] = useState<Record<number, number>>({});
-  const [selectedPool, setSelectedPool] = useState<{ num: number, type: string, count: number }[]>([]);
+  const [rawData, setRawData] = useState(() => safeGet(LS_RAW) || INITIAL_EXCEL_DATA);
+  const [dataSource, setDataSource] = useState<DataSource>(() => (safeGet(LS_RAW) ? 'CACHE' : 'SAMPLE'));
   const [activeHeatmap, setActiveHeatmap] = useState<'CURRENT' | 'PREVIOUS' | null>(null);
   const [insightNumber, setInsightNumber] = useState<NumberInsight | null>(null);
-
-  const [strategyMode, setStrategyMode] = useState<'WHEEL' | 'BALANCED' | 'REVERSE_WHEEL_8' | 'COMBINATORIAL_10'>('COMBINATORIAL_10');
-  const [combinatorialMatrix, setCombinatorialMatrix] = useState<TicketStats[]>([]);
-  const [balancedMatrix, setBalancedMatrix] = useState<TicketStats[]>([]);
-  const [reverseWheelMatrix, setReverseWheelMatrix] = useState<TicketStats[]>([]);
-  const [currentDay, setCurrentDay] = useState(() => parseInt(localStorage.getItem('mega645_currentDay') || '1'));
-  const [generatedMatrix, setGeneratedMatrix] = useState<TicketStats[]>([]);
+  const [strategyMode, setStrategyMode] = useState<Exclude<StrategyId, 'RANDOM_10'>>('COMBINATORIAL_10');
+  const [currentDay, setCurrentDay] = useState(() => parseInt(safeGet(LS_DAY) || '1', 10) || 1);
   const [lockedMatrix, setLockedMatrix] = useState<TicketStats[] | null>(() => {
-    const saved = localStorage.getItem('mega645_lockedMatrix');
-    return saved ? JSON.parse(saved) : null;
+    try {
+      const saved = safeGet(LS_LOCKED);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
   });
+  const [newDayInput, setNewDayInput] = useState('');
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const lineNumberRef = useRef<HTMLDivElement>(null);
+  // Giá trị cuối cùng đã đồng bộ với Firestore — tránh ghi lại chính dữ liệu vừa nhận về
+  const lastRemoteStateRef = useRef<string>('');
 
-  const [newDayInput, setNewDayInput] = useState('');
-
-  // --- PERSISTENCE ---
-  // --- PERSISTENCE & SYNC ---
-  // --- TỰ ĐỘNG TẢI 30 KỲ TỪ GOOGLE SHEETS VÀO WEB ---
+  // --- NGUỒN DỮ LIỆU DUY NHẤT: Google Sheets (DATA_MEGA) ---
+  // localStorage chỉ là cache để mở app nhanh/offline. Firestore KHÔNG còn lưu rawData
+  // (tránh việc 3 nguồn ghi đè lẫn nhau).
   useEffect(() => {
-    const fetchLatestDraws = async () => {
-      try {
-        const res = await fetch(GOOGLE_SCRIPT_URL);
-        const json = await res.json();
-        if (json.status === "SUCCESS" && json.data && json.data.length > 0) {
-          // Định dạng lại thành text nhiều dòng tương thích với rawData của App: "dd-MM-yyyy b1 b2 b3 b4 b5 b6"
-          const formattedLines = json.data.map((item: { date: string; numbers: number[] }) => {
-            const ballStr = item.numbers.map((n: number) => n < 10 ? `0${n}` : `${n}`).join(' ');
-            return `${item.date} ${ballStr}`;
-          });
-          setRawData(formattedLines.join('\n'));
-          console.log(`✅ Đã tự động tải ${json.data.length} kỳ mới nhất từ Google Sheets`);
-        }
-      } catch (err) {
-        console.warn("Chưa thể tự động kéo kết quả từ Google Sheets, sử dụng dữ liệu mặc định/local:", err);
-      }
-    };
-
-    fetchLatestDraws();
-  }, []);
-  // 1. Listen for updates from Firebase
-  useEffect(() => {
-    const unsubscribe = onSnapshot(doc(db, "mega645", "data"), (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        // Update state only if different to avoid loops/jitters
-        if (data.rawData !== undefined) {
-          setRawData(prev => prev !== data.rawData ? data.rawData : prev);
-        }
-        if (data.currentDay !== undefined) {
-          setCurrentDay(prev => prev !== data.currentDay ? data.currentDay : prev);
-        }
-        if (data.lockedMatrix !== undefined) {
-          setLockedMatrix(prev => JSON.stringify(prev) !== JSON.stringify(data.lockedMatrix) ? data.lockedMatrix : prev);
-        }
-      }
-    });
-    return () => unsubscribe();
+    let cancelled = false;
+    fetchDraws(60)
+      .then(draws => {
+        if (cancelled || draws.length === 0) return;
+        setRawData(draws.map(formatDrawLine).join('\n'));
+        setDataSource('SHEETS');
+      })
+      .catch(err => console.warn('Không tải được Google Sheets, dùng dữ liệu cache/mẫu:', err));
+    return () => { cancelled = true; };
   }, []);
 
-  // 2. Save to Firebase (Debounced)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Save to LocalStorage (Backup/Fast Load)
-      localStorage.setItem('mega645_rawData', rawData);
-      localStorage.setItem('mega645_currentDay', currentDay.toString());
-      if (lockedMatrix) {
-        localStorage.setItem('mega645_lockedMatrix', JSON.stringify(lockedMatrix));
-      } else {
-        localStorage.removeItem('mega645_lockedMatrix');
-      }
-
-      // Save to Firebase
-      setDoc(doc(db, "mega645", "data"), {
-        rawData,
-        currentDay,
-        lockedMatrix: lockedMatrix || null
-      }, { merge: true }).catch(err => console.error("Firebase save error:", err));
-
-    }, 1000); // 1s debounce
+    const timer = setTimeout(() => safeSet(LS_RAW, rawData), 500);
     return () => clearTimeout(timer);
-  }, [rawData, currentDay, lockedMatrix]);
+  }, [rawData]);
 
-  const handleHardReset = () => {
-    if (window.confirm('Bạn có chắc muốn xóa toàn bộ dữ liệu và reset về mặc định?')) {
-      // 1. Xóa toàn bộ localStorage liên quan đến app
-      localStorage.removeItem('mega645_rawData');
-      localStorage.removeItem('mega645_currentDay');
-      localStorage.removeItem('mega645_lockedMatrix');
-      
-      // 2. Reset state về giá trị khởi tạo ban đầu
-      setRawData(INITIAL_EXCEL_DATA);
-      setLockedMatrix(null);
-      setCurrentDay(1);
-      
-      // 3. Tải lại trang sạch hoàn toàn
-      window.location.reload();
+  // --- FIRESTORE: chỉ đồng bộ trạng thái "nuôi vé" (lockedMatrix, currentDay) giữa các thiết bị ---
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+    let cancelled = false;
+    authReady.then(() => {
+      if (cancelled) return;
+      unsubscribe = onSnapshot(STATE_DOC, snap => {
+      if (!snap.exists()) return;
+      const data = snap.data();
+      const remoteDay = typeof data.currentDay === 'number' ? data.currentDay : 1;
+      const remoteLocked = (data.lockedMatrix ?? null) as TicketStats[] | null;
+      lastRemoteStateRef.current = JSON.stringify({ currentDay: remoteDay, lockedMatrix: remoteLocked });
+      setCurrentDay(prev => (prev !== remoteDay ? remoteDay : prev));
+      setLockedMatrix(prev => (JSON.stringify(prev) !== JSON.stringify(remoteLocked) ? remoteLocked : prev));
+      }, err => console.error('Firestore listen error:', err));
+    }).catch(() => { /* đã log trong firebase.ts — app vẫn chạy với localStorage */ });
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+  }, []);
+
+  useEffect(() => {
+    safeSet(LS_DAY, String(currentDay));
+    safeSet(LS_LOCKED, lockedMatrix ? JSON.stringify(lockedMatrix) : null);
+
+    const state = JSON.stringify({ currentDay, lockedMatrix: lockedMatrix || null });
+    if (state === lastRemoteStateRef.current) return;
+    const timer = setTimeout(() => {
+      lastRemoteStateRef.current = state;
+      authReady
+        .then(() => setDoc(STATE_DOC, { currentDay, lockedMatrix: lockedMatrix || null }, { merge: true }))
+        .catch(err => console.error('Firebase save error:', err));
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [currentDay, lockedMatrix]);
+
+  // --- PHÂN TÍCH (dữ liệu suy ra => useMemo, không lưu state) ---
+  const allLines = useMemo(() => rawData.trim().split('\n'), [rawData]);
+  const analysis = useMemo(() => analyze(allLines), [allLines]);
+  const poolHistory = useMemo(() => poolHistoryOf(allLines), [allLines]);
+
+  const processedData = analysis.draws;
+  const frequency = analysis.frequency;
+  const prevFrequency = analysis.prevFrequency;
+  const selectedPool = analysis.pool;
+  const calculateTicketHealth = analysis.health;
+  const generatedMatrix = analysis.strategies.WHEEL;
+  const balancedMatrix = analysis.strategies.BALANCED;
+  const reverseWheelMatrix = analysis.strategies.REVERSE_WHEEL_8;
+  const combinatorialMatrix = analysis.strategies.COMBINATORIAL_10;
+
+  const latestResultStats = useMemo(
+    () => (processedData.length > 0 ? calculateTicketHealth(processedData[0].numbers) : null),
+    [processedData, calculateTicketHealth],
+  );
+
+  // --- TỰ ĐỘNG GHI DỰ ĐOÁN CỦA TẤT CẢ CHIẾN LƯỢC LÊN DU_DOAN_LOG ---
+  // Chỉ chạy khi dữ liệu đến từ Google Sheets (không đẩy dự đoán dựa trên dữ liệu mẫu/cache),
+  // mỗi kỳ chỉ đẩy 1 lần / thiết bị; server chống trùng thêm 1 lớp nữa.
+  useEffect(() => {
+    if (dataSource !== 'SHEETS') return;
+    const basedOn = normalizeDate(processedData[0]?.date ?? '');
+    if (!basedOn || safeGet(LS_LAST_PREDICTION_SYNC) === basedOn) return;
+
+    const payload: Record<string, number[][]> = {};
+    (Object.keys(analysis.strategies) as StrategyId[]).forEach(id => {
+      const tickets = analysis.strategies[id].map(t => t.numbers);
+      if (tickets.length > 0) payload[id] = tickets;
+    });
+    if (Object.keys(payload).length === 0) return;
+
+    safeSet(LS_LAST_PREDICTION_SYNC, basedOn);
+    logPredictions(basedOn, payload)
+      .then(() => console.log(`✅ Đã ghi dự đoán (${Object.keys(payload).join(', ')}) cho kỳ sau ${basedOn}`))
+      .catch(err => {
+        safeSet(LS_LAST_PREDICTION_SYNC, null);
+        console.error('Lỗi ghi dự đoán:', err);
+      });
+  }, [dataSource, processedData, analysis]);
+
+  const handleHardReset = async () => {
+    if (!window.confirm('Xóa cache trên máy này và bỏ trạng thái nuôi vé? (Dữ liệu kỳ quay sẽ tải lại từ Google Sheets)')) return;
+    [LS_RAW, LS_DAY, LS_LOCKED].forEach(k => safeSet(k, null));
+    try {
+      lastRemoteStateRef.current = JSON.stringify({ currentDay: 1, lockedMatrix: null });
+      await authReady;
+      await setDoc(STATE_DOC, { currentDay: 1, lockedMatrix: null }, { merge: true });
+    } catch (err) {
+      console.error('Không reset được Firestore:', err);
     }
+    window.location.reload();
   };
 
   const handleClearData = () => {
@@ -305,7 +228,7 @@ const Mega645AnalyzerV10 = () => {
     try {
       const text = await navigator.clipboard.readText();
       if (text) setRawData(text);
-    } catch (err) {
+    } catch {
       alert("Không thể dán tự động. Vui lòng dùng Ctrl+V.");
     }
   };
@@ -318,474 +241,22 @@ const Mega645AnalyzerV10 = () => {
 
   const handleUpdateNewDay = async () => {
     if (!newDayInput.trim()) return;
-
-    // 1. Tách chuỗi ngày và mảng 6 số
-    const parts = newDayInput.trim().split(/[\t,;|\s]+/);
-    let dateStr = new Date().toLocaleDateString('vi-VN').replace(/\//g, '-');
-    if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
-      dateStr = parts[0].replace(/[/. ]/g, '-');
-    }
-
-    const allNums = newDayInput.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
-    const validNums = allNums.filter(n => n >= 1 && n <= 45);
-
-    if (validNums.length < 6) {
-      alert("Vui lòng nhập đúng định dạng: Ngày và ít nhất 6 con số (1-45)!");
+    const parsed = parseDrawLine(newDayInput);
+    const dateStr = parsed ? normalizeDate(parsed.date) : null;
+    if (!parsed || !dateStr || new Set(parsed.numbers).size !== 6) {
+      alert('Vui lòng nhập đúng định dạng: Ngày (dd-mm-yyyy hoặc yyyy-mm-dd) và 6 số khác nhau (1-45)!');
       return;
     }
+    const draw = { date: dateStr, numbers: [...parsed.numbers].sort((a, b) => a - b) };
 
-    const finalDrawNums = validNums.slice(-6);
-
-    // 2. Cập nhật dữ liệu nội bộ trên Web (Cuốn chiếu 30 kỳ)
-    const currentLines = rawData.trim().split('\n');
-    const newLines = [newDayInput.trim(), ...currentLines];
-    setRawData(newLines.join('\n'));
+    setRawData(prev => [formatDrawLine(draw), ...prev.trim().split('\n')].join('\n'));
     setNewDayInput('');
+    if (currentDay < 7) setCurrentDay(currentDay + 1);
 
-    if (currentDay < 7) {
-      setCurrentDay(currentDay + 1);
-    }
-
-    // 3. Tự động gửi kết quả kỳ mới sang Google Sheets (DATA_MEGA)
-    await syncNewDrawToSheets(dateStr, finalDrawNums);
-
-    // 4. Lấy 30 vé dự đoán hiện tại của tab 10 Quy Luật để ghi vào DU_DOAN_LOG
-    if (combinatorialMatrix && combinatorialMatrix.length > 0) {
-      const ticketsToSend = combinatorialMatrix.slice(0, 30).map(t => t.numbers);
-      // Ngày mục tiêu kỳ tới (hiển thị ghi chú đối soát)
-      const nextTargetDate = `Dự đoán sau kỳ ${dateStr}`;
-      await syncPredictionsToSheets(nextTargetDate, ticketsToSend);
-    }
-
-    alert(`✅ Đã thêm ngày ${dateStr} thành công!\n- Đã cập nhật vào phân tích 30 kỳ trên web.\n- Đã đồng bộ sang Google Sheets để đối soát giải thưởng.`);
+    // Ghi lên DATA_MEGA; các chiến lược mới sẽ tự được ghi vào DU_DOAN_LOG bởi effect phía trên
+    await addDrawResult(draw.date, draw.numbers);
+    alert(`✅ Đã thêm kỳ ${draw.date}.\n- Đã cập nhật phân tích 30 kỳ trên web.\n- Đã gửi sang Google Sheets (bot cào tự động sẽ đối chiếu với kết quả chính thức).`);
   };
-
-  // --- ENGINE: TICKET HEALTH SCORING ---
-  const calculateTicketHealth = (numbers: number[]): TicketStats => {
-  const sorted = [...numbers].sort((a, b) => a - b);
-  const sum = sorted.reduce((a, b) => a + b, 0);
-  const evens = sorted.filter(n => n % 2 === 0).length;
-  const odds = 6 - evens;
-  const highs = sorted.filter(n => n > 22).length;
-  const lows = 6 - highs;
-  const doublesCount = sorted.filter(n => DOUBLE_NUMBERS.includes(n)).length;
-
-  let consecutive = false;
-  for (let i = 0; i < sorted.length - 1; i++) {
-    if (sorted[i + 1] === sorted[i] + 1) {
-      consecutive = true;
-      break;
-    }
-  }
-
-  // Chạy kiểm tra qua 10 quy luật chuẩn
-  const lastDraw = processedData[0]?.numbers || [];
-  const strat = getTemperatureStratification(frequency);
-  const check = validateTicket10Rules(sorted, lastDraw, strat);
-
-  let status: TicketStats['status'] = 'GOOD';
-  if (check.score >= 90) status = 'EXCELLENT';
-  else if (check.score >= 70) status = 'GOOD';
-  else if (check.score >= 50) status = 'WARNING';
-  else status = 'BAD';
-
-  return {
-    numbers: sorted,
-    sum,
-    evens,
-    odds,
-    highs,
-    lows,
-    consecutive,
-    doublesCount,
-    score: check.score,
-    status,
-    issues: check.failedRules,
-  };
-};
-
-  // --- ENGINE: DATA PROCESSING ---
-  useEffect(() => {
-    const allLines = rawData.trim().split('\n');
-
-    const processSegment = (lines: string[]) => {
-      const freqMap: Record<number, number> = {};
-      for (let i = 1; i <= TOTAL_NUMBERS; i++) freqMap[i] = 0;
-      const validDraws: { date: string, numbers: number[] }[] = [];
-
-      lines.forEach(line => {
-        const parts = line.trim().split(/[\t,;|\s]+/);
-        let dateStr = "N/A";
-        if (parts[0] && (parts[0].includes('/') || parts[0].includes('-') || parts[0].includes('.'))) {
-          dateStr = parts[0].replace(/[/. ]/g, '-');
-        }
-
-        const allNumbers = line.match(/\d+/g)?.map(n => parseInt(n)).filter(n => !isNaN(n)) || [];
-        const validRangeNumbers = allNumbers.filter(n => n >= 1 && n <= 45);
-
-        if (validRangeNumbers.length >= 6) {
-          const finalNums = validRangeNumbers.slice(-6);
-          validDraws.push({ date: dateStr, numbers: finalNums });
-          finalNums.forEach(n => { if (freqMap[n] !== undefined) freqMap[n]++; });
-        }
-      });
-      return { freqMap, validDraws };
-    };
-
-    // 1. Current Data (Top 30)
-    const current = processSegment(allLines.slice(0, 30));
-    setProcessedData(current.validDraws);
-    setFrequency(current.freqMap);
-
-    // 2. Previous Data (Offset 1, 30 lines)
-    // This simulates the state BEFORE the latest line was added
-    if (allLines.length > 1) {
-      const prev = processSegment(allLines.slice(1, 31));
-      setPrevFrequency(prev.freqMap);
-    } else {
-      setPrevFrequency({});
-    }
-
-  }, [rawData]);
-
-  const lastSyncedDateRef = useRef<string>("");
-
-  // --- ENGINE: COMBINATORIAL 10 RULES (ABBREVIATED WHEEL 30 VÉ) ---
-  useEffect(() => {
-    if (Object.keys(frequency).length === 0) return;
-    if (strategyMode !== 'COMBINATORIAL_10') return;
-
-    const strat = getTemperatureStratification(frequency);
-    const lastDraw = processedData[0]?.numbers || [];
-
-    const kSize = 15;
-    const poolK = Array.from(new Set([
-      ...strat.hot.slice(0, 6),
-      ...strat.warm.slice(0, 5),
-      ...strat.cold.slice(0, 3),
-      ...lastDraw.slice(0, 2),
-      ...strat.hot,
-      ...strat.warm,
-    ])).slice(0, kSize).sort((a, b) => a - b);
-
-    const targetTickets = 30;
-    const generatedTickets = generateAbbreviatedWheel(poolK, targetTickets, lastDraw, strat);
-    const analyzedTickets = generatedTickets.map(t => calculateTicketHealth(t.numbers));
-
-    setCombinatorialMatrix(analyzedTickets);
-
-    const latestDateStr = processedData[0]?.date || "";
-    if (generatedTickets.length > 0 && latestDateStr && lastSyncedDateRef.current !== latestDateStr) {
-      lastSyncedDateRef.current = latestDateStr;
-      const ticketsOnly = generatedTickets.slice(0, 30).map(t => t.numbers);
-      pushPredictionsToSheets(`Dự đoán sau kỳ ${latestDateStr}`, ticketsOnly);
-    }
-  }, [frequency, strategyMode, processedData]);
-  
-  // --- ENGINE: SELECTION ---
-  useEffect(() => {
-    const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
-    if (freqArray.length === 0) return;
-
-    freqArray.sort((a, b) => {
-      if (b.count !== a.count) return b.count - a.count;
-      return a.num - b.num;
-    });
-
-    // Modified Strategy: 4 HOT, 4 WARM, 2 COLD
-    const hot = freqArray.slice(0, 4).map(i => i.num);
-    const midStart = Math.max(0, Math.floor(freqArray.length / 2) - 2);
-    const warm = freqArray.slice(midStart, midStart + 4).map(i => i.num);
-    const cold = freqArray.slice(Math.max(0, freqArray.length - 2)).map(i => i.num);
-
-    let poolIndices = Array.from(new Set([...hot, ...warm, ...cold]));
-    let ptr = 0;
-    while (poolIndices.length < 10 && ptr < freqArray.length) {
-      if (!poolIndices.includes(freqArray[ptr].num)) poolIndices.push(freqArray[ptr].num);
-      ptr++;
-    }
-
-    const finalPool = poolIndices.slice(0, 10).sort((a, b) => a - b).map(num => ({
-      num, count: frequency[num], type: hot.includes(num) ? 'HOT' : cold.includes(num) ? 'COLD' : 'WARM'
-    }));
-
-    setSelectedPool(finalPool);
-
-    const poolNums = finalPool.map(p => p.num);
-    const rawMatrix = WHEEL_TEMPLATE.map(row =>
-      row.map(idx => poolNums[idx] !== undefined ? poolNums[idx] : 0)
-    );
-
-    const analyzedMatrix = rawMatrix.map(ticketNums => calculateTicketHealth(ticketNums));
-    setGeneratedMatrix(analyzedMatrix);
-
-  }, [frequency]);
-
-  // --- ENGINE: BALANCED STRATEGY ---
-  useEffect(() => {
-    if (Object.keys(frequency).length === 0) return;
-    if (strategyMode !== 'BALANCED') return;
-
-    const generateBalancedSets = () => {
-      const results: TicketStats[] = [];
-      const HEAD_4_POOL = [41, 42, 43, 45];
-      const TAIL_3_8_PRIORITY = [28, 23, 13, 18];
-      const TAIL_3_8_POOL = [3, 13, 23, 33, 8, 18, 28, 38]; // Note: 33, 43 also tail 3. 43 is in Head pool.
-      const FILLERS_PRIORITY = [2, 9, 10, 14, 17];
-      const FILLERS_POOL = Array.from({ length: 19 }, (_, i) => i + 1); // 01-19
-
-      const isValid = (nums: number[]) => {
-        if (new Set(nums).size !== 6) return false;
-        const sum = nums.reduce((a, b) => a + b, 0);
-        if (sum < 130 || sum > 170) return false;
-
-        const evens = nums.filter(n => n % 2 === 0).length;
-        // 3 Even - 3 Odd OR 4 Even - 2 Odd
-        if (evens !== 3 && evens !== 4) return false;
-
-        // 3 Small (01-22) - 3 Large (23-45)
-        const smalls = nums.filter(n => n <= 22).length;
-        if (smalls !== 3) return false;
-
-        // Sequence: At least 1 pair, NO 3 consecutive
-        const sorted = [...nums].sort((a, b) => a - b);
-        let hasAdj = false;
-        let streak = 1;
-        for (let i = 0; i < 5; i++) {
-          if (sorted[i + 1] === sorted[i] + 1) {
-            streak++;
-            hasAdj = true;
-          } else {
-            streak = 1;
-          }
-          if (streak >= 3) return false;
-        }
-        if (!hasAdj) return false;
-
-        return true;
-      };
-
-      let attempts = 0;
-      const uniqueStrings = new Set<string>();
-
-      while (results.length < 15 && attempts < 20000) { // Gen up to 15 suggestions
-        attempts++;
-        let current: number[] = [];
-
-        // STEP 1: HEAD 4 (2 Numbers)
-        // Explicit logic from user: Priority 42-43 or 41-45
-        if (Math.random() < 0.4) {
-          current.push(42, 43);
-        } else if (Math.random() < 0.4) {
-          current.push(41, 45);
-        } else {
-          // Pick random 2 from pool
-          const shuffled = [...HEAD_4_POOL].sort(() => Math.random() - 0.5);
-          current.push(shuffled[0], shuffled[1]);
-        }
-
-        // STEP 2: TAIL 3 or 8 (1-2 Numbers)
-        // Priority: 28, 23, 13, 18
-        const numsToAddStep2 = Math.random() < 0.7 ? 1 : 2;
-        let step2Candidates = [...TAIL_3_8_PRIORITY];
-        if (Math.random() > 0.7) step2Candidates = [...TAIL_3_8_POOL];
-
-        // Filter out existing
-        step2Candidates = step2Candidates.filter(n => !current.includes(n));
-        step2Candidates.sort(() => Math.random() - 0.5);
-
-        for (let i = 0; i < numsToAddStep2; i++) {
-          if (step2Candidates[i]) current.push(step2Candidates[i]);
-        }
-
-        // STEP 3: ADJACENT PAIR (If not present)
-        // Check if we already have adjacent
-        current.sort((a, b) => a - b);
-        let hasAdj = false;
-        for (let i = 0; i < current.length - 1; i++) {
-          if (current[i + 1] === current[i] + 1) hasAdj = true;
-        }
-
-        if (!hasAdj) {
-          // Need to add an adjacent to one of existing
-          // Pick a random existing number and try -1 or +1
-          const base = current[Math.floor(Math.random() * current.length)];
-          const opt1 = base + 1;
-          const opt2 = base - 1;
-          // Must be in 1-45
-          const opts = [];
-          if (opt1 <= 45 && !current.includes(opt1)) opts.push(opt1);
-          if (opt2 >= 1 && !current.includes(opt2)) opts.push(opt2);
-
-          if (opts.length > 0) {
-            current.push(opts[Math.floor(Math.random() * opts.length)]);
-          }
-        }
-
-        // STEP 4: FILLERS
-        // Fill until 6
-        if (current.length > 6) {
-          // Truncate random? or retry.
-          // If >6, let's just keep first 6 (unlikely if strictly following steps but possible if step 2 added 2 and step 3 added 1 and we started with 2 -> 5 nums. wait 2+2+1 = 5. So usually <6).
-          // Actually: Step 1 (2) + Step 2 (1-2) + Step 3 (0-1) -> Max 5. So we always need fillers.
-          current = current.slice(0, 6);
-        }
-
-        const remainingCount = 6 - current.length;
-        if (remainingCount > 0) {
-          // Mix priority fillers and general fillers
-          let fillers = [...FILLERS_POOL].filter(n => !current.includes(n));
-
-          // Weighted sort: Priority ones first slightly more often?
-          fillers.sort((a, b) => {
-            const aP = FILLERS_PRIORITY.includes(a);
-            const bP = FILLERS_PRIORITY.includes(b);
-            if (aP && !bP) return -1;
-            if (!aP && bP) return 1;
-            return Math.random() - 0.5;
-          });
-
-          for (let i = 0; i < remainingCount; i++) {
-            if (fillers[i]) current.push(fillers[i]);
-          }
-        }
-
-        if (isValid(current)) {
-          const signature = current.sort((a, b) => a - b).join('-');
-          if (!uniqueStrings.has(signature)) {
-            uniqueStrings.add(signature);
-            results.push(calculateTicketHealth(current));
-          }
-        }
-      }
-
-      // Sort by Score
-      results.sort((a, b) => b.score - a.score);
-      setBalancedMatrix(results);
-    };
-
-    generateBalancedSets();
-
-  }, [frequency, strategyMode]); // Re-run when mode changes to BALANCED or data updates
-
-  // --- ENGINE: REVERSE WHEEL 8 STRATEGY ---
-  useEffect(() => {
-    if (Object.keys(frequency).length === 0) return;
-    if (strategyMode !== 'REVERSE_WHEEL_8') return;
-    if (selectedPool.length < 5) return;
-
-    const generateReverseWheelSets = () => {
-      // 1. Calculate frequencies and traps
-      const freqArray = Object.keys(frequency).map(k => ({ num: parseInt(k), count: frequency[parseInt(k)] }));
-      freqArray.sort((a, b) => {
-        if (b.count !== a.count) return b.count - a.count;
-        return a.num - b.num;
-      });
-
-      // Top 22 hottest numbers (approx 50%) -> Hot Trap
-      const medianPool = freqArray.slice(22).map(f => f.num);
-
-      // 2. Anchor Pairs (Sắp xếp lại theo tần suất giảm dần trước khi lấy Neo)
-      const poolByFreq = [...selectedPool].sort((a, b) => b.count - a.count);
-      const A = poolByFreq[0].num;
-      const B = poolByFreq[1].num;
-
-      // 3. Inverse Translation for 3 bases
-      const bases = [poolByFreq[2].num, poolByFreq[3].num, poolByFreq[4].num];
-      const generated6 = new Set<number>();
-
-      bases.forEach(x => {
-        let left = x - 1 < 1 ? 45 : x - 1;
-        let right = x + 1 > 45 ? 1 : x + 1;
-        generated6.add(left);
-        generated6.add(right);
-      });
-
-      let cdefgh = Array.from(generated6);
-      let valid_cdefgh: number[] = [];
-
-      // Filter to ensure they are in Median Pool and not Anchors
-      for (let n of cdefgh) {
-        if (n !== A && n !== B && medianPool.includes(n) && !valid_cdefgh.includes(n)) {
-          valid_cdefgh.push(n);
-        }
-      }
-
-      // Fill the rest up to 6 from Median Pool
-      let ptr = 0;
-      while (valid_cdefgh.length < 6 && ptr < 200) {
-        let candidate = medianPool[Math.floor(Math.random() * medianPool.length)];
-        if (!valid_cdefgh.includes(candidate) && candidate !== A && candidate !== B) {
-          valid_cdefgh.push(candidate);
-        }
-        ptr++;
-      }
-
-      // Fallback if not enough (rare edge case)
-      let fb = 1;
-      while (valid_cdefgh.length < 6 && fb <= 45) {
-        if (!valid_cdefgh.includes(fb) && fb !== A && fb !== B) valid_cdefgh.push(fb);
-        fb++;
-      }
-
-      valid_cdefgh.sort((a, b) => a - b);
-      const C = valid_cdefgh[0];
-      const D = valid_cdefgh[1];
-      const E = valid_cdefgh[2];
-      const F = valid_cdefgh[3];
-      const G = valid_cdefgh[4];
-      const H = valid_cdefgh[5];
-
-      const tickets = [
-        [A, B, C, D, E, F],
-        [A, B, C, D, G, H],
-        [A, B, E, F, G, H],
-        [C, D, E, F, G, H]
-      ];
-
-      const processedTickets = tickets.map(t => {
-        const sorted = [...t].sort((a, b) => a - b);
-        let health = calculateTicketHealth(sorted);
-        // Tùy chỉnh health status cho Wheel 8
-        if (t === tickets[3]) {
-          health.issues.push("Vé bảo lãnh (Không có Neo)");
-        } else {
-          health.issues.push(`Chứa cặp Neo (${A}, ${B})`);
-        }
-        return health;
-      });
-
-      setReverseWheelMatrix(processedTickets);
-    };
-
-    generateReverseWheelSets();
-
-  }, [frequency, strategyMode, selectedPool]);
-
-  // --- POOL HISTORY ---
-  const poolHistory = useMemo(() => {
-    const allLines = rawData.trim().split('\n');
-    const history = [];
-
-    // Calculate for past 7 periods (offsets 1 to 7)
-    for (let i = 1; i <= 7; i++) {
-      const slice = allLines.slice(i, i + 30);
-      if (slice.length < 30) break;
-      const res = getPoolForData(slice);
-      if (res) history.push({ ...res, offset: i });
-    }
-    return history;
-  }, [rawData]);
-
-  // --- LATEST RESULT ANALYSIS ---
-  const latestResultStats = useMemo(() => {
-    if (processedData.length > 0) {
-      return calculateTicketHealth(processedData[0].numbers);
-    }
-    return null;
-  }, [processedData]);
-
-
 
   // --- INSIGHT LOGIC ---
   const handleNumberClick = (num: number) => {
@@ -868,7 +339,7 @@ const Mega645AnalyzerV10 = () => {
       try {
         await navigator.clipboard.writeText(code);
         alert(`✅ Đã COPY Mã Dữ Liệu!`);
-      } catch (clipboardError) {
+      } catch {
         prompt("Copy mã:", code);
       }
     } catch (e) {
@@ -901,208 +372,10 @@ const Mega645AnalyzerV10 = () => {
         }
         alert("✅ Đồng bộ thành công!");
       }
-    } catch (e) {
+    } catch {
       alert("❌ Mã lỗi.");
     }
-  };
-
-  // --- COMPONENTS ---
-  const FrequencyHeatmap = ({
-    data,
-    title,
-    highlight = [],
-    isPrevious = false,
-    onClick
-  }: {
-    data: Record<number, number>,
-    title: string,
-    highlight?: number[],
-    isPrevious?: boolean,
-    onClick?: () => void
-  }) => {
-    const vals = Object.values(data);
-    const max = Math.max(...vals, 1);
-    const min = Math.min(...vals, 0);
-    const range = max - min;
-    const hotThreshold = max - (range / 3);
-    const coldThreshold = min + (range / 3);
-
-    return (
-      <div
-        onClick={onClick}
-        className={`flex flex-col gap-2 bg-slate-900/50 p-2 rounded-lg border border-slate-800 transition-all cursor-pointer hover:border-slate-600 ${isPrevious ? 'opacity-60 grayscale-[0.3]' : ''}`}
-      >
-        <div className="flex justify-between items-center">
-          <h3 className="text-[9px] font-bold text-slate-400 uppercase tracking-wider truncate flex items-center gap-1">
-            {title} <Maximize2 className="w-2 h-2 opacity-50" />
-          </h3>
-        </div>
-        <div className="grid grid-cols-8 gap-1">
-          {Array.from({ length: 45 }, (_, i) => i + 1).map(num => {
-            const freq = data[num] || 0;
-            const isHighlighted = highlight.includes(num);
-
-            // 3-Level Logic: Hot / Warm / Cold
-            let bgClass = 'bg-slate-800 text-slate-500 border-slate-700'; // Default (0 freq or error)
-
-            if (freq > 0) {
-              if (freq >= hotThreshold) {
-                bgClass = 'bg-red-600 text-white border-red-800 shadow-red-900/50';
-              } else if (freq <= coldThreshold) {
-                bgClass = 'bg-blue-600 text-white border-blue-800 shadow-blue-900/50';
-              } else {
-                bgClass = 'bg-amber-500 text-black border-amber-700 shadow-amber-900/50';
-              }
-            }
-
-            return (
-              <div
-                key={num}
-                className={`
-                  relative w-full aspect-square rounded-full flex flex-col items-center justify-center transition-all border-2
-                  ${bgClass}
-                  ${isHighlighted ? 'ring-1 ring-white scale-110 z-10 shadow-lg' : 'opacity-90 hover:opacity-100 hover:scale-105'}
-                `}
-                title={`Số ${num}: ${freq} lần`}
-              >
-                <span className="text-[9px] font-bold leading-none">{num < 10 ? `0${num}` : num}</span>
-                <span className="text-[7px] font-bold leading-none mt-px opacity-80">{freq}</span>
-                {isHighlighted && <span className="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 bg-white rounded-full animate-pulse"></span>}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  };
-
-  const HealthBadge = ({ score, status }: { score: number, status: string }) => {
-    let color = 'bg-slate-500';
-    if (status === 'EXCELLENT') color = 'bg-emerald-500';
-    if (status === 'GOOD') color = 'bg-blue-500';
-    if (status === 'WARNING') color = 'bg-yellow-500';
-    if (status === 'BAD') color = 'bg-red-500';
-
-    return (
-      <div className="flex items-center gap-2" title={`Điểm sức khỏe: ${score}/100`}>
-        <div className="w-20 h-2.5 bg-slate-700 rounded-full overflow-hidden">
-          <div className={`h-full ${color}`} style={{ width: `${score}%` }}></div>
-        </div>
-        <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${color.replace('bg-', 'text-')} bg-opacity-20 border border-opacity-50 border-${color.replace('bg-', '')}`}>
-          {score}
-        </span>
-      </div>
-    );
-  };
-
-  const TicketRowV10 = ({ stats, index, isLocked, lockedSet, onClickNumber, latestResult = [] }: { stats: TicketStats, index: number, isLocked: boolean, lockedSet?: Set<number>, onClickNumber?: (n: number) => void, latestResult?: number[] }) => {
-    const isBad = stats.status === 'BAD';
-    const opacityClass = isBad && !isLocked ? 'opacity-50 grayscale hover:opacity-100 hover:grayscale-0 transition-all' : '';
-
-    return (
-      <div className={`flex flex-col gap-3 p-4 rounded-xl border bg-slate-900/80 shadow-sm ${opacityClass} ${isBad ? 'border-red-900/50 bg-red-900/5' : 'border-slate-800'}`}>
-
-        {/* Row Header: Score & Status */}
-        <div className="flex justify-between items-center border-b border-slate-800/50 pb-3 mb-1">
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-slate-500 font-mono font-bold">#{index + 1}</span>
-            <HealthBadge score={stats.score} status={stats.status} />
-          </div>
-          {stats.issues.length > 0 && (
-            <div className="flex gap-1.5 flex-wrap justify-end">
-              {stats.issues.map((issue, i) => (
-                <span key={i} className="text-[10px] uppercase font-bold bg-red-950 text-red-400 px-2 py-1 rounded border border-red-900/50">
-                  {issue}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Numbers & Stats */}
-        <div className="flex flex-col xl:flex-row justify-between items-center gap-4">
-          <div className="flex gap-1 md:gap-1.5 flex-nowrap overflow-x-auto max-w-full py-2 px-2 justify-start md:justify-center scrollbar-hide">
-            {stats.numbers.map((n, i) => {
-              const isDouble = DOUBLE_NUMBERS.includes(n);
-              const isMatch = !isLocked && lockedSet?.has(n);
-
-              // LIVE MATRIX: Gold Border Style (No Hot/Cold Colors)
-              // LOCKED MATRIX: Green Tint
-              let bgClass = 'bg-slate-800';
-              let textClass = 'text-slate-200';
-              let borderClass = 'border-slate-700';
-              let shadowClass = '';
-              let ringClass = '';
-              let scaleClass = '';
-              let zIndexClass = '';
-
-              if (isLocked) {
-                bgClass = 'bg-emerald-900/20';
-                textClass = 'text-emerald-100';
-                borderClass = 'border-emerald-800/50';
-              } else {
-                // Live Matrix Style
-                bgClass = 'bg-slate-950';
-                textClass = 'text-yellow-500';
-                borderClass = 'border-yellow-600/50';
-                shadowClass = 'shadow-[0_0_8px_rgba(234,179,8,0.15)]';
-              }
-
-              // Match highlight for Live Matrix (vs Locked) - Standard Match
-              if (isMatch && !isLocked) {
-                bgClass = 'bg-yellow-900/20';
-                textClass = 'text-yellow-400';
-                borderClass = 'border-yellow-500';
-                shadowClass = 'shadow-[0_0_15px_rgba(234,179,8,0.6)]';
-                ringClass = 'ring-1 ring-yellow-400';
-                zIndexClass = 'z-10';
-                scaleClass = 'scale-110';
-              }
-
-              // LATEST RESULT MATCH (Highest Priority BG, but KEEP Border)
-              if (latestResult.includes(n)) {
-                bgClass = 'bg-purple-600';
-                textClass = 'text-white font-bold';
-                // Keep borderClass from above to preserve "Pool/Locked" status indication
-                // Add a ring or shadow to emphasize the match
-                ringClass = 'ring-1 ring-purple-300';
-                shadowClass = 'shadow-[0_0_15px_rgba(168,85,247,0.8)]';
-                zIndexClass = 'z-20';
-                scaleClass = 'scale-110';
-              }
-
-              const finalClass = `${bgClass} ${textClass} border ${borderClass} ${shadowClass} ${ringClass} ${zIndexClass} ${scaleClass}`;
-
-              return (
-                <span key={i} onClick={() => onClickNumber && onClickNumber(n)} className={`relative font-mono font-bold w-7 h-7 md:w-9 md:h-9 flex-none flex items-center justify-center rounded-lg text-xs md:text-base cursor-pointer hover:scale-110 transition-transform ${finalClass}`}>
-                  {n < 10 ? `0${n}` : n}
-                  {isDouble && <span className="absolute -top-1 -right-1 w-1.5 h-1.5 md:w-2 md:h-2 bg-purple-500 rounded-full border-2 border-slate-900"></span>}
-                </span>
-              );
-            })}
-          </div>
-
-          {/* Mini Indicators (Always Visible) */}
-          <div className="flex gap-2 text-xs font-mono font-medium flex-wrap justify-center">
-            <span className={`px-2 py-1 rounded border ${stats.sum >= 95 && stats.sum <= 181 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-red-800 text-red-400 bg-red-900/20'}`}>
-              ∑{stats.sum}
-            </span>
-            <span className={`px-2 py-1 rounded border ${stats.evens >= 2 && stats.evens <= 4 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-yellow-800 text-yellow-400 bg-yellow-900/20'}`}>
-              {stats.evens}C/{stats.odds}L
-            </span>
-            <span className={`px-2 py-1 rounded border ${stats.highs >= 2 && stats.highs <= 4 ? 'border-slate-700 text-slate-400 bg-slate-800/50' : 'border-blue-800 text-blue-400 bg-blue-900/20'}`}>
-              {stats.highs}T/{stats.lows}X
-            </span>
-            {stats.consecutive && <span className="px-2 py-1 rounded bg-emerald-900/30 text-emerald-400 border border-emerald-800">LiênKề</span>}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-
-
-  const lineNumbers = useMemo(() => {
+  };  const lineNumbers = useMemo(() => {
     const count = rawData.split('\n').length;
     return Array.from({ length: Math.max(count, 30) }, (_, i) => i + 1).join('\n');
   }, [rawData]);
@@ -1121,12 +394,6 @@ const Mega645AnalyzerV10 = () => {
     const col2 = allLines.slice(15, 30);
     const history = allLines.slice(30);
 
-    const LineItem = ({ line, idx, isHistory = false }: { line: string, idx: number, isHistory?: boolean }) => (
-      <div className={`flex items-center gap-2 font-mono ${isHistory ? 'opacity-30' : 'text-slate-300'}`}>
-        <span className="w-6 text-right text-slate-600 select-none">{idx + 1}</span>
-        <span className="whitespace-pre">{line}</span>
-      </div>
-    );
 
     return (
       <div className="flex flex-col h-full overflow-y-auto p-3 bg-black text-xs md:text-sm leading-loose">

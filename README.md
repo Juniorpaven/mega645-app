@@ -1,73 +1,60 @@
-# React + TypeScript + Vite
+# Mega 6/45 Pro
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Ứng dụng web (React + Vite + PWA) dùng để thống kê và sinh bộ vé Mega 6/45 theo nhiều chiến lược. App kết nối với file Google Sheets `AUTO_DATA_MEGA` để lấy kết quả, ghi dự đoán và đối soát hiệu quả.
 
-Currently, two official plugins are available:
+> ⚠️ Xổ số là ngẫu nhiên. Các bộ lọc (tần suất, nóng/lạnh, tổng, AC, …) **không làm tăng xác suất trúng**, chúng chỉ quyết định bạn mua *những bộ số nào*. Sheet `DOI_SOAT_CUON_CHIEU` có nhóm đối chứng ngẫu nhiên để bạn tự kiểm chứng điều này bằng dữ liệu thật.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Kiến trúc
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+Vietlott ──(Apps Script cào mỗi giờ)──► Google Sheets AUTO_DATA_MEGA
+                                         ├─ DATA_MEGA            (nguồn dữ liệu DUY NHẤT)
+                                         ├─ DU_DOAN_LOG          (vé dự đoán của mọi chiến lược)
+                                         └─ DOI_SOAT_CUON_CHIEU  (báo cáo hiệu quả)
+                                                 ▲   │ GET 60 kỳ
+                                    POST dự đoán │   ▼
+                                     React app (Firebase Hosting)
+                                         └─ Firestore: chỉ lưu trạng thái "nuôi vé" (lockedMatrix, currentDay)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+| Thư mục / file | Vai trò |
+|---|---|
+| `src/strategies.ts` | Toàn bộ chiến lược sinh vé, viết dạng hàm thuần. Dùng RNG có seed nên cùng dữ liệu luôn cho cùng bộ vé. |
+| `src/Mega645FilterEngine.ts` | Bộ lọc 10 quy luật và thuật toán bao thu gọn. |
+| `src/sheetsApi.ts` | Client gọi Apps Script. |
+| `src/components.tsx` | Các component hiển thị. |
+| `apps-script/` | Mã nguồn Apps Script cho file Sheets. Xem [hướng dẫn cài](apps-script/README.md). |
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+Các chiến lược được ghi vào sheet:
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+| Mã | Nội dung |
+|---|---|
+| `COMBINATORIAL_10` | 10 quy luật + bao thu gọn, 30 vé |
+| `BALANCED` | Cân bằng, 15 vé |
+| `WHEEL` | Bao 10 số, 10 vé |
+| `REVERSE_WHEEL_8` | Bao ngược 8 số, 4 vé |
+| `RANDOM_10` | Đối chứng ngẫu nhiên, 10 vé |
+
+## Chạy ở máy
+
+```bash
+npm ci
+npm run dev      # http://localhost:5173
+npm test         # unit test (vitest)
+npm run lint
+npm run build
 ```
+
+Có thể khai báo các biến tuỳ chọn sau trong file `.env.local`:
+
+```
+VITE_GOOGLE_SCRIPT_URL=https://script.google.com/macros/s/.../exec
+VITE_SHEETS_TOKEN=<trùng với API_TOKEN trong Apps Script>
+```
+
+## Triển khai
+
+- **Web app:** push lên `main`, GitHub Actions sẽ chạy lint, test, build rồi deploy lên Firebase Hosting.
+  - Có thể thêm các secret `VITE_GOOGLE_SCRIPT_URL` và `VITE_SHEETS_TOKEN` nếu dùng.
+- **Firestore rules:** workflow không deploy rules, cần chạy tay bằng lệnh `firebase deploy --only firestore:rules`.
+- **Apps Script:** xem [apps-script/README.md](apps-script/README.md).

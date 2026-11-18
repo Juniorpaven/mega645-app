@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
+import { getAuth, signInAnonymously, onAuthStateChanged, type User } from "firebase/auth";
 
+// Cấu hình web Firebase là thông tin công khai (không phải bí mật) — bảo mật nằm ở firestore.rules.
 const firebaseConfig = {
     apiKey: "AIzaSyDxscnmP04F4G7ugivuDdL-RE0VRkMYxdw",
     authDomain: "mega645-app.firebaseapp.com",
@@ -16,20 +17,19 @@ const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
 
-// --- TỰ ĐỘNG ĐĂNG NHẬP (Ẩn danh) ---
-signInAnonymously(auth)
-    .then(() => {
-        console.log("🔥 Firebase: Đã đăng nhập ẩn danh thành công!");
-    })
-    .catch((error) => {
-        console.error("🔥 Firebase: Lỗi đăng nhập:", error);
+/**
+ * Promise hoàn tất khi đã đăng nhập (ẩn danh). Mọi thao tác Firestore phải chờ promise này,
+ * nếu không listener sẽ bị từ chối quyền (rules yêu cầu request.auth != null) và dừng hẳn.
+ */
+export const authReady: Promise<User> = new Promise((resolve, reject) => {
+    const unsubscribe = onAuthStateChanged(auth, user => {
+        if (user) {
+            unsubscribe();
+            resolve(user);
+        }
     });
-
-// Theo dõi trạng thái auth
-onAuthStateChanged(auth, (user) => {
-    if (user) {
-        console.log("🔥 User ID:", user.uid);
-    } else {
-        console.log("🔥 User signed out");
-    }
+    signInAnonymously(auth).catch(error => {
+        console.error("🔥 Firebase: Lỗi đăng nhập:", error);
+        reject(error);
+    });
 });
